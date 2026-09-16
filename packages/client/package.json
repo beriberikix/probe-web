@@ -1,0 +1,20 @@
+{
+  "name": "@probe-web/client",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./wire": "./src/wire.ts"
+  },
+  "files": [
+    "src",
+    "wasm",
+    "worker"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>probe-web: minimal flash</title>
+<button id="go">Authorize + flash</button>
+<pre id="out"></pre>
+<script type="module">
+import { Client } from '@probe-web/client';
+import { requestProbe } from '@probe-web/devices';
+const out = document.getElementById('out');
+document.getElementById('go').onclick = async () => {
+  await requestProbe();                                        // one-time grant, per origin
+  const client = await Client.connect({ kind: 'webusb' });     // probe-rs in this tab
+  const [probe] = await client.listProbes();
+  const session = await client.attach({ probe, chip: 'MCXA153', protocol: 'Swd' });
+  await session.flash({ image: '/firmware/app.bin', format: 'bin', baseAddress: 0x1F000 },
+    (e) => (out.textContent += JSON.stringify(e, (k, v) => typeof v === 'bigint' ? Number(v) : v) + '\n'));
+  out.textContent += 'done\n';
+};
+</script>

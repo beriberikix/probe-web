@@ -1,0 +1,17 @@
+{
+  "name": "@probe-web/app-flash",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@probe-web/client": "*",
+    "@probe-web/devices": "*",
+    "@probe-web/ui": "*",
+    "lit": "^3.2.0"
+  }
+}

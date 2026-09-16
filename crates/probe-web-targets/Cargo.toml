@@ -1,0 +1,9 @@
+[package]
+name = "probe-web-targets"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]

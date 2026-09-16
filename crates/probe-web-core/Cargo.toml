@@ -1,0 +1,29 @@
+[package]
+name = "probe-web-core"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Browser client for probe-rs: the probe-rs RPC client compiled to wasm, over WebSocket or a Worker"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+probe-rs-rpc = { path = "../../../prs-wasm-rpc/probe-rs-rpc" }
+probe-rs-rpc-client = { path = "../../../prs-wasm-rpc/probe-rs-rpc-client" }
+postcard-rpc = { version = "0.12", features = ["use-std"] }
+defmt-decoder = "1"
+object = { version = "0.40", default-features = false, features = ["read_core", "elf", "std"] }
+tokio = { version = "1", features = ["sync", "macros"] }
+serde = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+js-sys = { workspace = true }
+web-sys = { workspace = true, features = ["WebSocket", "MessageEvent", "BinaryType", "Event", "CloseEvent", "Worker", "console"] }
+console_error_panic_hook = { workspace = true }
+futures = { workspace = true }
+sha2 = "0.11"
+base64 = "0.22"

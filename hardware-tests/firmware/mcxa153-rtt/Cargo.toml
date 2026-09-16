@@ -1,0 +1,19 @@
+[package]
+name = "mcxa153-rtt"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone: cross-compiled test firmware for the FRDM-MCXA153 (Cortex-M33).
+[workspace]
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "1"
+defmt-rtt = "1"
+panic-probe = { version = "1", features = ["print-defmt"] }
+
+[profile.release]
+debug = true
+opt-level = "s"

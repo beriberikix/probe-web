@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "spikes/*"]
+# Cross-compiled fixture with its own workspace and target.
+exclude = ["spikes/defmt-fixture"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/beriberikix/probe-web"
+
+[workspace.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+tsify = { version = "0.5", default-features = false, features = ["js"] }
+futures = "0.3"
+web-time = "1"
+tracing = "0.1"
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

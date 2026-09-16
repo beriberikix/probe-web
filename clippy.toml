@@ -1,0 +1,5 @@
+# Host-only std APIs that panic at runtime on wasm32-unknown-unknown.
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "panics on wasm32; use an async timer" },
+  { path = "std::time::Instant::now", reason = "panics on wasm32; use web_time::Instant" },
+]

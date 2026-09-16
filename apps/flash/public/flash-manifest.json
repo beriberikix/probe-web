@@ -1,0 +1,9 @@
+{
+  "name": "FRDM-MCXA153 test pattern",
+  "chip": "MCXA153",
+  "protocol": "Swd",
+  "images": [
+    { "url": "/firmware/pattern.bin", "format": "bin", "address": "0x0001F000", "name": "pattern.bin" }
+  ],
+  "options": { "verify": true }
+}

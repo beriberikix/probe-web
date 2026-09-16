@@ -1,0 +1,17 @@
+[package]
+name = "spike-defmt-wasm"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "defmt-native"
+path = "src/main.rs"
+
+[dependencies]
+defmt-decoder = "1"
+wasm-bindgen = { workspace = true }
+console_error_panic_hook = { workspace = true }

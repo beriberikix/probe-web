@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>probe-web flasher</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; margin: 0; padding: 16px; max-width: 900px; margin-inline: auto; color: #111; }
+    h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 18px 0 6px; }
+    .muted { color: #666; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 10px 0; }
+    label { margin-right: 10px; } input[type=text] { font: inherit; }
+    button { font: inherit; padding: 6px 10px; }
+    .err { color: #b91c1c; } .ok { color: #15803d; }
+    pre.log { background: #f5f5f5; padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>probe-web flasher</h1>
+  <p class="muted" id="manifest-name">loading manifest…</p>
+
+  <fieldset>
+    <legend>transport</legend>
+    <label><input type="radio" name="transport" value="webusb" checked> WebUSB (probe-rs in this tab)</label>
+    <label><input type="radio" name="transport" value="websocket"> WebSocket to <code>probe-rs serve</code></label>
+    <label>url <input type="text" id="ws-url" value="ws://127.0.0.1:3000" size="24"></label>
+    <label>token <input type="text" id="ws-token" value="" size="10"></label>
+    <button id="connect">Connect</button>
+    <span id="conn-status" class="muted"></span>
+  </fieldset>
+
+  <h2>1. Probe</h2>
+  <probe-device-picker id="picker"></probe-device-picker>
+
+  <h2>2. Target</h2>
+  <label>chip <input type="text" id="chip" size="14"></label>
+  <label>protocol <select id="protocol"><option value="">auto</option><option>Swd</option><option>Jtag</option></select></label>
+  <button id="attach">Attach</button>
+  <span id="attach-status" class="muted"></span>
+
+  <h2>3. Flash</h2>
+  <probe-flash-panel id="flash"></probe-flash-panel>
+
+  <h2>4. RTT</h2>
+  <probe-rtt-terminal id="rtt"></probe-rtt-terminal>
+
+  <pre class="log" id="log"></pre>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
