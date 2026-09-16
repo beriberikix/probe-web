@@ -553,7 +553,6 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
     let mut live: Option<LiveRtt> = None;
     let mut buf = vec![0u8; 4096];
     let mut polls: u64 = 0;
-    let mut total_bytes: u64 = 0;
     let started = web_time::Instant::now();
     let mut last_rtt_attempt = None::<web_time::Instant>;
 
@@ -573,14 +572,9 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                     let due = last_rtt_attempt.map(|t| t.elapsed() >= Duration::from_millis(200)).unwrap_or(true);
                     if due && started.elapsed() < Duration::from_secs(10) {
                         last_rtt_attempt = Some(web_time::Instant::now());
-                        let t_attach = web_time::Instant::now();
                         let attempt = Rtt::attach_region(&mut core, region).await;
-                        log(&format!(
-                            "poll {polls}: rtt attach {} in {:?}",
-                            match &attempt { Ok(_) => "ok".to_string(), Err(e) => format!("failed: {e}") },
-                            t_attach.elapsed()
-                        ));
                         if let Ok(mut rtt) = attempt {
+                            log(&format!("RTT attached after {:?}", started.elapsed()));
                             for (n, mode) in &modes {
                                 if let Some(mode) = mode {
                                     let targets: Vec<usize> = if *n == u32::MAX {
@@ -614,8 +608,6 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                     match ch.read(&mut core, &mut buf).await {
                         Ok(n) if n > 0 => {
                             any = true;
-                            total_bytes += n as u64;
-                            log(&format!("poll {polls}: ch{i} {n} bytes (total {total_bytes})"));
                             let _ = sender
                                 .publish::<RttTopic>(VarSeq::Seq2(0), &RttEvent::Output { channel: i as u32, bytes: buf[..n].to_vec() })
                                 .await;
@@ -635,13 +627,9 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                 if live.is_some() || polls >= 5 {
                     core.run().await.map_err(err)?;
                     needs_resume = false;
-                    log("core resumed");
                 }
             }
             let status = core.status().await.map_err(err)?;
-            if polls % 20 == 1 {
-                log(&format!("poll {polls}: status {status:?}, rtt attached {}", live.is_some()));
-            }
             if let probe_rs::CoreStatus::Halted(reason) = status {
                 if !needs_resume {
                     return Ok(MonitorExitReason::Halted(convert::halt_reason(reason)));

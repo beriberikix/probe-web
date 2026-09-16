@@ -1,0 +1,9 @@
+{
+  "name": "Thingy:91 nRF9160 RTT echo firmware (String up + down channel)",
+  "chip": "nRF9160_xxAA",
+  "protocol": "Swd",
+  "images": [
+    { "url": "/firmware/nrf9160-rtt-echo.elf", "format": "elf", "name": "nrf9160-rtt-echo.elf", "defmt": false }
+  ],
+  "options": { "verify": true }
+}

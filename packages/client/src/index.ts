@@ -141,7 +141,19 @@ function rttConfig(c: RttChannelConfigInput = {}): Wire.RttChannelConfig {
 }
 
 export class Client {
+  private worker: Worker | null = null;
+  private releaseLock: (() => void) | null = null;
   private constructor(readonly raw: ProbeWebClient, readonly transport: Transport['kind']) {}
+
+  /** Close the transport: terminates the worker (releasing the USB device and
+   *  the cross-tab lock) or drops the WebSocket. The client is unusable after. */
+  close(): void {
+    this.releaseLock?.();
+    this.releaseLock = null;
+    this.worker?.terminate();
+    this.worker = null;
+    this.raw.free();
+  }
 
   static async connect(transport: Transport): Promise<Client> {
     await ensureWasm();
@@ -151,7 +163,9 @@ export class Client {
     }
     const worker = transport.worker ?? createLocalWorker({ fake: transport.fake });
     const raw = await ProbeWebClient.connectWorker(worker);
-    return new Client(raw, 'webusb');
+    const client = new Client(raw, 'webusb');
+    client.worker = worker;
+    return client;
   }
 
   /** Endpoints/topics the connected server does not implement (RPC paths). */
@@ -177,6 +191,17 @@ export class Client {
   }
 
   async attach(opts: AttachOptions): Promise<Session> {
+    if (this.transport === 'webusb' && !this.releaseLock) {
+      // Chrome claims the USB interface per tab; take a cross-tab lock so a
+      // second tab gets a clear error instead of an opaque USB failure.
+      const release = await acquireProbeLock(`${opts.probe.vendor_id}:${opts.probe.product_id}:${opts.probe.serial_number}`);
+      if (!release) {
+        const e = new Error('this probe is in use by another tab of this site') as ProbeWebError;
+        e.kind = 'probe-in-use-other-tab';
+        throw e;
+      }
+      this.releaseLock = release;
+    }
     const req: Wire.AttachRequest = {
       chip: opts.chip ?? null,
       protocol: opts.protocol ?? null,
@@ -294,6 +319,20 @@ export class Core {
   writeMemory32(address: number | bigint, data: Uint32Array): Promise<void> {
     return this.raw.writeMemory32(BigInt(address), data);
   }
+}
+
+/** Hold a Web Lock for a probe until the returned function is called; `null` if another tab holds it. */
+function acquireProbeLock(key: string): Promise<(() => void) | null> {
+  if (typeof navigator === 'undefined' || !('locks' in navigator)) return Promise.resolve(() => {});
+  return new Promise((resolve) => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    void navigator.locks.request(`probe-web:${key}`, { ifAvailable: true }, (lock) => {
+      if (!lock) { resolve(null); return; }
+      resolve(release);
+      return held;
+    });
+  });
 }
 
 /** Human-readable operation name from a ProgressEvent, or null. */

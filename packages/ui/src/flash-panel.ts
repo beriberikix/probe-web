@@ -125,6 +125,44 @@ export class ProbeFlashPanel extends LitElement {
     }
   }
 
+  private begin() {
+    this.busy = true;
+    this.bars = [];
+    this.diagnostics = [];
+    this.result = null;
+    this.layout = null;
+  }
+
+  async verifyOnly() {
+    const job = this.effectiveJob;
+    if (!this.session || !job) return;
+    this.begin();
+    try {
+      const r = await this.session.verify(job, this.onProgress);
+      this.result = r === 'Ok' ? 'Verify: flash matches the image' : 'Verify: mismatch';
+      this.dispatchEvent(new CustomEvent('verify-done', { detail: r, bubbles: true, composed: true }));
+    } catch (e) {
+      this.result = `Failed: ${(e as Error).message ?? e}`;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  async eraseAll() {
+    if (!this.session) return;
+    this.begin();
+    const t0 = performance.now();
+    try {
+      await this.session.eraseAll(this.onProgress);
+      this.result = `Erased all flash in ${((performance.now() - t0) / 1000).toFixed(2)} s`;
+      this.dispatchEvent(new CustomEvent('erase-done', { bubbles: true, composed: true }));
+    } catch (e) {
+      this.result = `Failed: ${(e as Error).message ?? e}`;
+    } finally {
+      this.busy = false;
+    }
+  }
+
   render() {
     const job = this.effectiveJob;
     return html`
@@ -141,7 +179,9 @@ export class ProbeFlashPanel extends LitElement {
         <label><input type="checkbox" .checked=${this.verify} @change=${(e: Event) => (this.verify = (e.target as HTMLInputElement).checked)}> verify</label>
         <label><input type="checkbox" .checked=${this.chipErase} @change=${(e: Event) => (this.chipErase = (e.target as HTMLInputElement).checked)}> full chip erase</label>
         <label><input type="checkbox" .checked=${this.keepUnwritten} @change=${(e: Event) => (this.keepUnwritten = (e.target as HTMLInputElement).checked)}> keep unwritten bytes</label>
-        <button class="primary" @click=${this.flash} ?disabled=${this.busy || !this.session || !job}>${this.busy ? 'Flashing…' : 'Flash'}</button>
+        <button class="primary" @click=${this.flash} ?disabled=${this.busy || !this.session || !job}>${this.busy ? 'Working…' : 'Flash'}</button>
+        <button @click=${this.verifyOnly} ?disabled=${this.busy || !this.session || !job}>Verify only</button>
+        <button @click=${this.eraseAll} ?disabled=${this.busy || !this.session}>Erase all</button>
       </div>
       ${this.layout ? html`<div class="layout">${this.layout}</div>` : nothing}
       ${this.bars.map((b) => html`

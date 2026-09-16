@@ -16,7 +16,7 @@ the auth challenge as a frame and survives clients disconnecting mid-monitor).
 
 ## Runs
 
-Manifests: `flash-manifest.json` (MCXA153 pattern), `rtt-manifest.json` (MCXA153 defmt-RTT firmware), `esp-manifest.json` (ESP32-S3, spare region 0x7F0000, esptool readback), `nrf-manifest.json` (nRF9160, 0xF0000). Add `&manifest=/<name>.json` and, with several probes attached, `&probe=<substring>`.
+Manifests: `flash-manifest.json` (MCXA153 pattern), `rtt-manifest.json` (MCXA153 defmt-RTT firmware), `esp-manifest.json` (ESP32-S3, spare region 0x7F0000, esptool readback), `nrf-manifest.json` (nRF9160, 0xF0000), `nrf-rtt-manifest.json` (nRF9160 RTT echo firmware; add `&monitor=6&send=hello` to test the down channel). Add `&manifest=/<name>.json`, `&op=verify|erase|cycle` (default flash), and, with several probes attached, `&probe=<substring>`. Hardware-free: `npm run test:e2e` runs the fake-probe suite under Playwright.
 
 ### FRDM-MCXA153, MCU-Link CMSIS-DAP v2
 
@@ -32,5 +32,4 @@ Verify a pattern flash out-of-band after the tab releases the probe:
 probe-rs read --chip MCXA153 --protocol swd b8 0x1F000 32   # first 21 bytes = the tag
 ```
 
-Rebuild the RTT firmware: `cd firmware/mcxa153-rtt && cargo build --release`
-and copy the ELF to `apps/flash/public/firmware/mcxa153-rtt.elf`.
+Rebuild the test firmware (`firmware/mcxa153-rtt`, defmt-RTT; `firmware/nrf9160-rtt-echo`, rtt-target with a down channel): `cargo build --release` in the firmware directory, then copy the ELF to `apps/flash/public/firmware/<name>.elf` (ELFs are gitignored).

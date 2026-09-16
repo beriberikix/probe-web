@@ -23,6 +23,9 @@ export class ProbeRttTerminal extends LitElement {
 
   @property({ attribute: false }) session: Session | null = null;
   @property({ attribute: false }) bootInfo: Wire.BootInfo | null = null;
+  /** ELF of the running firmware; its `_SEGGER_RTT` symbol gives an exact scan region. */
+  @property({ attribute: false }) elf: Uint8Array | null = null;
+  /** ELF whose defmt table decodes the channels (usually the same file). */
   @property({ attribute: false }) defmtElf: Uint8Array | null = null;
   @state() private running = false;
   @state() private status = 'idle';
@@ -60,7 +63,7 @@ export class ProbeRttTerminal extends LitElement {
     this.running = true;
     this.status = 'attaching RTT…';
     try {
-      await this.session.createRttClient({ elf: this.defmtElf ?? undefined, defaults: { dataFormat: this.defmtElf ? 'Defmt' : 'String' } });
+      await this.session.createRttClient({ elf: this.elf ?? this.defmtElf ?? undefined, defaults: { dataFormat: this.defmtElf ? 'Defmt' : 'String' } });
       if (this.defmtElf) {
         const ok = this.session.setDefmtElf(this.defmtElf);
         if (!ok) this.term?.writeln('\x1b[33m[ELF has no defmt table; showing raw bytes]\x1b[0m');

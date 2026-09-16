@@ -1,4 +1,5 @@
 import '@probe-web/ui';
+import { describe, onDevicesChanged } from '@probe-web/devices';
 import { Client, Session, createLocalWorker, type FlashJob, type Wire } from '@probe-web/client';
 import type { ProbeDevicePicker, ProbeFlashPanel, ProbeRttTerminal } from '@probe-web/ui';
 
@@ -20,6 +21,7 @@ let session: Session | null = null;
 let probe: Wire.DebugProbeEntry | null = null;
 let manifest: Manifest | null = null;
 let defmtElf: Uint8Array | null = null;
+let imageElf: Uint8Array | null = null;
 
 const picker = $<ProbeDevicePicker>('picker');
 const flash = $<ProbeFlashPanel>('flash');
@@ -42,7 +44,10 @@ async function loadManifest() {
         baseAddress: img.address ? BigInt(img.address) : undefined,
         options: manifest!.options,
       };
-      if (img.defmt && !tag) defmtElf = new Uint8Array(await (await fetch(img.url)).arrayBuffer());
+      if (img.format === 'elf' && !tag) {
+        imageElf = new Uint8Array(await (await fetch(img.url)).arrayBuffer());
+        if (img.defmt) defmtElf = imageElf;
+      }
     }
   } catch (e) {
     $('manifest-name').textContent = 'no manifest';
@@ -94,6 +99,7 @@ async function attach(): Promise<Session | null> {
   }
 }
 
+onDevicesChanged((kind, d) => log(`device ${kind}: ${describe(d).label}`));
 picker.addEventListener('probe-selected', (e) => {
   probe = (e as CustomEvent<Wire.DebugProbeEntry>).detail;
   log(`probe: ${probe.identifier}`);
@@ -102,6 +108,7 @@ flash.addEventListener('flash-done', (e) => {
   const { bootInfo, ms } = (e as CustomEvent).detail;
   rtt.bootInfo = bootInfo;
   // The flashed ELF is also the defmt table for decoding its RTT output.
+  if (imageElf) rtt.elf = imageElf;
   if (defmtElf) rtt.defmtElf = defmtElf;
   log(`flash done in ${ms} ms; boot info ${JSON.stringify(bootInfo, (_, v) => typeof v === 'bigint' ? v.toString() : v)}`);
   log('FLASH_RESULT=PASS');
@@ -154,19 +161,39 @@ if (qs.has('auto')) {
         log('FAKE_RESULT=PASS');
       } else if (s) {
         await flash.updateComplete;
-        await flash.flash();
+        // ?op=: "flash" (default) | "verify" | "erase" | "cycle" = flash, verify (Ok), erase, verify (Mismatch), flash, verify (Ok)
+        const op = qs.get('op') ?? 'flash';
+        const verdicts: string[] = [];
+        flash.addEventListener('verify-done', (e) => verdicts.push(String((e as CustomEvent).detail)));
+        if (op === 'verify') await flash.verifyOnly();
+        else if (op === 'erase') await flash.eraseAll();
+        else if (op === 'cycle') {
+          await flash.flash();
+          await flash.verifyOnly();
+          await flash.eraseAll();
+          await flash.verifyOnly();
+          await flash.flash();
+          await flash.verifyOnly();
+          log(`cycle verdicts: ${verdicts.join(', ')}`);
+          log(`CYCLE_RESULT=${verdicts.join(',') === 'Ok,Mismatch,Ok' ? 'PASS' : 'FAIL'}`);
+        } else await flash.flash();
         // ?monitor=<seconds>: run the RTT terminal for a while, then stop.
         const secs = Number(qs.get('monitor') ?? 0);
         if (secs > 0 && rtt.bootInfo) {
           const t0 = performance.now();
           let events = 0;
           const seen: string[] = [];
+          // ?send=<text>: write it to down channel 0 once RTT is up; expect the firmware's uppercased echo.
+          const sendText = qs.get('send');
           const orig = (rtt as unknown as { onEvent: (e: unknown) => void }).onEvent;
           (rtt as unknown as { onEvent: (e: unknown) => void }).onEvent = (ev: unknown) => {
             events++;
             const e = ev as { kind: string; lines?: { message: string }[]; text?: string };
             if (e.kind === 'defmt') for (const l of e.lines ?? []) seen.push(l.message);
             if (e.kind === 'text') seen.push(e.text ?? '');
+            if (e.kind === 'rtt-discovered' && sendText && session) {
+              setTimeout(() => void session!.rttWrite(0, sendText + '\n').then((n) => log(`sent ${n} bytes to down channel 0`), (err) => log(`rtt write failed: ${err}`)), 300);
+            }
             orig.call(rtt, ev);
           };
           const run = rtt.start();
@@ -174,7 +201,10 @@ if (qs.has('auto')) {
           await rtt.stop();
           await run;
           log(`monitor: ${events} events in ${Math.round(performance.now() - t0)} ms; first: ${JSON.stringify(seen.slice(0, 3))}; last: ${JSON.stringify(seen.slice(-1))}`);
-          log(`RTT_RESULT=${seen.length >= 3 ? 'PASS' : 'FAIL'}`);
+          const all = seen.join('');
+          const echoOk = !sendText || all.includes(`echo: ${sendText.toUpperCase()}`);
+          if (sendText) log(`echo ${echoOk ? 'received' : 'MISSING'}: ${JSON.stringify(`echo: ${sendText.toUpperCase()}`)}`);
+          log(`RTT_RESULT=${seen.length >= 3 && echoOk ? 'PASS' : 'FAIL'}`);
         }
       }
     } else {

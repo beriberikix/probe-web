@@ -1,0 +1,18 @@
+[package]
+name = "nrf9160-rtt-echo"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone: test firmware for the Thingy:91 (nRF9160, Cortex-M33).
+[workspace]
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+rtt-target = "0.6"
+panic-halt = "1"
+
+[profile.release]
+debug = true
+opt-level = "s"
