@@ -1,0 +1,8 @@
+{
+  "name": "ESP32-S3 test pattern (spare flash region at 0x7F0000)",
+  "chip": "",
+  "images": [
+    { "url": "/firmware/pattern.bin", "format": "bin", "address": "0x007F0000", "name": "pattern.bin" }
+  ],
+  "options": { "verify": true }
+}

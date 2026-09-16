@@ -138,8 +138,11 @@ if (qs.has('auto')) {
   const c = await connect();
   if (c) {
     const probes = await c.listProbes();
-    if (probes.length) {
-      probe = probes[0];
+    // ?probe=<substring> picks a probe by identifier/serial when several are attached.
+    const want = qs.get('probe')?.toLowerCase();
+    const chosen = want ? probes.find((p) => `${p.identifier} ${p.serial_number}`.toLowerCase().includes(want)) : probes[0];
+    if (chosen) {
+      probe = chosen;
       const s = await attach();
       if (s && qs.has('fake')) {
         // The mocked core cannot run flash algorithms; prove the transport with memory ops.
@@ -175,7 +178,7 @@ if (qs.has('auto')) {
         }
       }
     } else {
-      log('auto: no probes');
+      log(want ? `auto: no probe matching ${JSON.stringify(want)} among ${probes.length}` : 'auto: no probes');
     }
   }
   log('AUTORUN_DONE');

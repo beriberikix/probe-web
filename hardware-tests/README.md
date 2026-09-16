@@ -14,7 +14,11 @@ Manual/automated end-to-end runs against real boards. All results are logged in
 `probe-rs serve` must be built from the `wasm-rpc-client` worktree (it sends
 the auth challenge as a frame and survives clients disconnecting mid-monitor).
 
-## Runs (FRDM-MCXA153, MCU-Link CMSIS-DAP v2)
+## Runs
+
+Manifests: `flash-manifest.json` (MCXA153 pattern), `rtt-manifest.json` (MCXA153 defmt-RTT firmware), `esp-manifest.json` (ESP32-S3, spare region 0x7F0000, esptool readback), `nrf-manifest.json` (nRF9160, 0xF0000). Add `&manifest=/<name>.json` and, with several probes attached, `&probe=<substring>`.
+
+### FRDM-MCXA153, MCU-Link CMSIS-DAP v2
 
 | What | URL |
 |---|---|

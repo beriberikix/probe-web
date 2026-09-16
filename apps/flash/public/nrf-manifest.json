@@ -1,0 +1,9 @@
+{
+  "name": "Thingy:91 nRF9160 test pattern (top of flash, 0xF0000)",
+  "chip": "nRF9160_xxAA",
+  "protocol": "Swd",
+  "images": [
+    { "url": "/firmware/pattern.bin", "format": "bin", "address": "0x000F0000", "name": "pattern.bin" }
+  ],
+  "options": { "verify": true }
+}
