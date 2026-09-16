@@ -12,3 +12,5 @@ packages/client/worker/fake/
 !packages/client/worker/local-worker.js
 # Built from hardware-tests/firmware/mcxa153-rtt
 apps/flash/public/firmware/*.elf
+test-results/
+playwright-report/
