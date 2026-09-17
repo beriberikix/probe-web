@@ -16,4 +16,3 @@ test-results/
 playwright-report/
 # TypeScript incremental build state
 *.tsbuildinfo
-.cargo/config.toml
