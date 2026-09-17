@@ -17,9 +17,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # The toolchain and the wasm32 target come from rust-toolchain.toml.
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: none
+      # rustup installs the channel and the wasm32 target named in rust-toolchain.toml.
+      - run: rustup show
       - uses: Swatinem/rust-cache@v2
 
       # Must match the wasm-bindgen crate version in Cargo.lock, or the glue and the
@@ -63,9 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: none
+      # rustup installs the channel and the wasm32 target named in rust-toolchain.toml.
+      - run: rustup show
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       # The lint that keeps host-only APIs (thread::sleep, std Instant) out of wasm builds.

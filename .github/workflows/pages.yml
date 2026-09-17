@@ -21,9 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: none
+      # rustup installs the channel and the wasm32 target named in rust-toolchain.toml.
+      - run: rustup show
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
