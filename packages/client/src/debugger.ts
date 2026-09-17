@@ -36,6 +36,8 @@ export interface DebugSessionLike {
     rttChannels?(): Promise<unknown>;
     pollRtt?(channels: Uint32Array): Promise<unknown>;
   };
+  /** Whether the server implements an endpoint (the SDK Session; optional so tests can omit it). */
+  supports?(path: keyof Wire.Endpoints): boolean;
   /** The SDK Session's RTT setup (optional so tests can omit it). */
   createRttClient?(opts: { elf?: Uint8Array }): Promise<unknown>;
   core(index: number): DebugCoreLike;
@@ -789,7 +791,18 @@ export class Debugger extends EventTarget {
    * Disassemble `count` instructions starting at `address` shifted by `instructionOffset`
    * instructions (negative looks backwards, as DAP `disassemble` does).
    */
+  /**
+   * Whether this connection can disassemble. `probe-rs serve` can; the WebUSB worker cannot
+   * (probe-rs uses capstone, which is C code). Views should show that instead of an error.
+   */
+  get canDisassemble(): boolean {
+    return this.session.supports?.('core/disassemble') ?? true;
+  }
+
   disassemble(address: number | bigint, count: number, instructionOffset = 0, byteOffset = 0): Promise<Instruction[]> {
+    if (!this.canDisassemble) {
+      return Promise.reject(Object.assign(new Error('disassembly is not available on this connection (the WebUSB transport has no disassembler)'), { kind: 'unsupported' }));
+    }
     return this.exclusive(async () => {
       const list = (await this.session.raw.disassemble(this.coreIndex, BigInt(address), BigInt(byteOffset), BigInt(instructionOffset), BigInt(count))) as Wire.WireDisassembledInstruction[];
       return list.map((ins) => ({

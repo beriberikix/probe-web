@@ -3,7 +3,10 @@
 use probe_rs::{CoreStatus, CoreType, HaltReason, BreakpointCause, flashing};
 use probe_rs_rpc::{
     chip::{GenericRegion, MemoryAccess, MemoryRegion, NvmRegion, RamRegion},
-    core_ops::{WireBreakpointCause, WireCoreType, WireCoreStatus, WireHaltReason},
+    core_ops::{
+        WireBreakpointCause, WireCoreType, WireCoreStatus, WireExitErrorDetails, WireHaltReason,
+        WireSemihostingCommand,
+    },
     flash::{BootInfo, FlashDataBlockSpan, FlashFill, FlashLayout, FlashPage, FlashSector, Operation, ProgressEvent},
     info::WireFlashSector,
     rtt_client::ScanRegion,
@@ -89,14 +92,38 @@ pub fn flash_sectors(target: &probe_rs::Target) -> Vec<WireFlashSector> {
     out
 }
 
+/// The kind of a semihosting command, without its target-memory payload.
+fn semihosting_command(cmd: &probe_rs::semihosting::SemihostingCommand) -> WireSemihostingCommand {
+    use probe_rs::semihosting::SemihostingCommand;
+    match cmd {
+        SemihostingCommand::ExitSuccess => WireSemihostingCommand::ExitSuccess,
+        SemihostingCommand::ExitError(details) => {
+            WireSemihostingCommand::ExitError(WireExitErrorDetails {
+                reason: details.reason,
+                exit_status: details.exit_status,
+                subcode: details.subcode,
+            })
+        }
+        // `GetCommandLine` would carry the target block address so a client could write the
+        // command line itself; the fork's request does not expose it, and the worker services the
+        // command locally anyway, so it is reported like any other kind.
+        _ => WireSemihostingCommand::Other,
+    }
+}
+
 pub fn halt_reason(r: HaltReason) -> WireHaltReason {
     match r {
         HaltReason::Multiple => WireHaltReason::Multiple,
         HaltReason::Breakpoint(c) => WireHaltReason::Breakpoint(match c {
             BreakpointCause::Hardware => WireBreakpointCause::Hardware,
             BreakpointCause::Software => WireBreakpointCause::Software,
-            // Semihosting payloads are handled by the monitor loop; the DAP-facing
-            // status only needs to know a breakpoint halted the core.
+            // The command's pointers into target memory do not travel over the wire, but the kind
+            // does: a client that sees a semihosting halt services it through
+            // `core/handle_semihosting` instead of reporting a stop, which is how the SDK
+            // `Debugger` turns semihosting into output events.
+            BreakpointCause::Semihosting(ref cmd) => {
+                WireBreakpointCause::Semihosting(semihosting_command(cmd))
+            }
             _ => WireBreakpointCause::Unknown,
         }),
         HaltReason::Exception => WireHaltReason::Exception,

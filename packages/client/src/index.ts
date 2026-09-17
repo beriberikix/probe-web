@@ -48,11 +48,21 @@ export type Transport =
   | { kind: 'websocket'; url: string; token?: string }
   | { kind: 'webusb'; worker?: Worker; /** test-only build with a fake probe (mocked core) */ fake?: boolean };
 
-/** Create the worker that hosts probe-rs for the WebUSB transport. */
-export function createLocalWorker(opts: { fake?: boolean } = {}): Worker {
+/**
+ * Create the worker that hosts probe-rs for the WebUSB transport. `log` raises
+ * probe-rs's tracing level inside the worker (its output is mirrored to the page
+ * as `log:` messages); in a browser it also comes from `?workerLog=` on the page.
+ */
+export function createLocalWorker(opts: { fake?: boolean; log?: string } = {}): Worker {
   const url = opts.fake
     ? new URL('../worker/fake/local-worker.js', import.meta.url)
     : new URL('../worker/local-worker.js', import.meta.url);
+  const level =
+    opts.log ??
+    (typeof location !== 'undefined'
+      ? (new URLSearchParams(location.search).get('workerLog') ?? undefined)
+      : undefined);
+  if (level) url.searchParams.set('log', level);
   return new Worker(url, { type: 'module' });
 }
 
@@ -323,6 +333,47 @@ export class Client {
 
 /** RPC endpoints a `Debugger` needs; missing on the WebUSB worker today. */
 const DEBUG_ENDPOINTS: (keyof Wire.Endpoints)[] = ['core/step', 'core/read_registers', 'stack_trace/rich', 'stack_trace/scopes', 'debug_state/load_debug_info'];
+
+/** What {@link openSession} needs: a transport, which probe (substring of its name or serial), and the target. */
+export interface OpenSessionOptions {
+  transport: 'websocket' | 'webusb';
+  /** WebSocket URL of `probe-rs serve` (default `ws://127.0.0.1:3000`). */
+  url?: string;
+  token?: string;
+  /** Test-only fake probe in the WebUSB worker. */
+  fake?: boolean;
+  /** Case-insensitive substring of the probe's name or serial number; the first probe when omitted. */
+  probe?: string;
+  chip?: string;
+  protocol?: 'Swd' | 'Jtag';
+  connectUnderReset?: boolean;
+}
+
+/**
+ * Connect over either transport, pick a probe and attach: the same few lines every app and check
+ * page needs. On WebUSB the probe must already be granted to the page (`requestProbe`).
+ */
+export async function openSession(opts: OpenSessionOptions): Promise<{ client: Client; session: Session; probe: Wire.DebugProbeEntry }> {
+  const client = await Client.connect(
+    opts.transport === 'webusb'
+      ? { kind: 'webusb', fake: opts.fake }
+      : { kind: 'websocket', url: opts.url ?? 'ws://127.0.0.1:3000', token: opts.token ?? '' },
+  );
+  try {
+    const probes = await client.listProbes();
+    const want = (opts.probe ?? '').toLowerCase();
+    const probe = probes.find((p) => `${p.identifier} ${p.serial_number}`.toLowerCase().includes(want));
+    if (!probe) {
+      const where = opts.transport === 'webusb' ? 'granted to this page' : 'on the server';
+      throw Object.assign(new Error(`no probe matching "${opts.probe ?? ''}" ${where} (found: ${probes.map((p) => p.identifier).join(', ') || 'none'})`), { kind: 'probe-not-found' });
+    }
+    const session = await client.attach({ probe, chip: opts.chip, protocol: opts.protocol, connectUnderReset: opts.connectUnderReset });
+    return { client, session, probe };
+  } catch (e) {
+    client.close();
+    throw e;
+  }
+}
 
 export class Session {
   readonly raw: ProbeWebSession;

@@ -112,8 +112,11 @@ async function launch() {
   const initialized = new Promise<void>((r) => on('initialized', () => r()));
   await request('initialize', { adapterID: 'probe-rs', linesStartAt1: true, columnsStartAt1: true });
   await request('launch', {
+    // `?transport=webusb` debugs through probe-rs in a Worker over WebUSB instead of probe-rs serve.
+    transport: qs.get('transport') === 'webusb' ? 'webusb' : 'websocket',
     url: $<HTMLInputElement>('url').value, token: $<HTMLInputElement>('token').value,
     probe: $<HTMLInputElement>('probe').value, chip: $<HTMLInputElement>('chip').value,
+    protocol: qs.get('protocol') === 'Jtag' ? 'Jtag' : 'Swd',
     program: $<HTMLInputElement>('elf').value,
   });
   await initialized;
@@ -136,11 +139,12 @@ if (qs.has('auto')) {
     try {
       await launch();
       const bp = Number(qs.get('bp') ?? 40);
-      await setBreakpoints('src/main.rs', [bp]);
+      const srcPath = qs.get('srcPath') ?? 'src/main.rs';
+      await setBreakpoints(srcPath, [bp]);
       const stopped = waitStop();
       await request('configurationDone');
       await stopped;
-      check('stopped at the breakpoint with the source open', !!(file as string | null)?.endsWith('src/main.rs') && (pcLine as number | null) === bp, `${file}:${pcLine}`);
+      check('stopped at the breakpoint with the source open', !!(file as string | null)?.endsWith(srcPath) && (pcLine as number | null) === bp, `${file}:${pcLine}`);
       check('locals printed from DAP variables', out.some((l) => /point = \{ x: \d+, y: \d+ \}/.test(l)), out.filter((l) => l.includes('point')).join(' | '));
       const stepped = waitStop();
       await request('next', { threadId: 1 });

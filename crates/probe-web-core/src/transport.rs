@@ -199,8 +199,10 @@ pub async fn connect_worker(worker: Worker) -> Result<(RpcClient, Capabilities),
                     }
                 } else if let Some(reason) = text.strip_prefix("fatal:") {
                     kill(reason.to_string());
+                } else if let Some(line) = text.strip_prefix("log:") {
+                    // probe-rs's own tracing from inside the worker (see `?workerLog=`).
+                    web_sys::console::log_1(&format!("[worker] {line}").into());
                 }
-                // Anything else (e.g. "log:…") is for the host page.
                 return;
             }
             let bytes = if let Ok(arr) = data.clone().dyn_into::<js_sys::Uint8Array>() {

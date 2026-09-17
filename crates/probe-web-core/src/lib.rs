@@ -642,6 +642,13 @@ impl ProbeWebCore {
     pub async fn metadata(&self) -> Result<JsValue, JsValue> {
         to_js(&self.core.metadata().await.map_err(client_err)?)
     }
+    /// Registers plus the memory in `ranges` (`[[start, end], …]`), as for a coredump file.
+    #[wasm_bindgen(js_name = dumpCore)]
+    pub async fn dump_core(&self, ranges: JsValue) -> Result<JsValue, JsValue> {
+        let ranges: Vec<(u64, u64)> = from_js(ranges)?;
+        let ranges = ranges.into_iter().map(|(start, end)| start..end).collect();
+        to_js(&self.core.dump_core(ranges).await.map_err(client_err)?)
+    }
     /// Service a semihosting request the core is halted on (console/file writes); the server
     /// resumes the core when it handled the call. Returns `{status, events}`.
     #[wasm_bindgen(js_name = handleSemihosting)]

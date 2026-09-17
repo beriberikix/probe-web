@@ -63,6 +63,30 @@ test.describe('workbench (fake debugger)', () => {
   });
 });
 
+// The transport picker: WebUSB runs probe-rs in the page, so the server fields do not apply.
+test.describe('workbench transport picker', () => {
+  test.use({ viewport: { width: 1400, height: 900 } });
+
+  test('WebUSB hides the server fields and offers the probe chooser; the choice is remembered', async ({ page }) => {
+    await page.goto('/workbench/?fake=1&fresh=1');
+    await expect(page.locator('#url')).toBeVisible();
+    await expect(page.locator('#pick-probe')).toBeHidden();
+
+    await page.selectOption('#transport', 'webusb');
+    await expect(page.locator('#url')).toBeHidden();
+    await expect(page.locator('#token')).toBeHidden();
+    await expect(page.locator('#pick-probe')).toBeVisible();
+
+    // Remembered across reloads, and ?transport= wins over what was remembered.
+    await page.reload();
+    await expect(page.locator('#transport')).toHaveValue('webusb');
+    await expect(page.locator('#pick-probe')).toBeVisible();
+    await page.goto('/workbench/?fake=1&transport=websocket');
+    await expect(page.locator('#url')).toBeVisible();
+    await expect(page.locator('#pick-probe')).toBeHidden();
+  });
+});
+
 // Picked files and the source folder are remembered. Real FileSystemHandles are needed (IndexedDB
 // clones them), so the pickers are stubbed with handles from the origin private file system.
 // Reading such a handle back from IndexedDB crashes Playwright's Chromium builds (both the headless

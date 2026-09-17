@@ -41,9 +41,14 @@ export class ProbeDisassembly extends DebuggerElement {
     await this.refresh();
   }
 
+  /** False on connections without a disassembler (the WebUSB worker). */
+  get available(): boolean {
+    return (this.debugger as { canDisassemble?: boolean } | null)?.canDisassemble !== false;
+  }
+
   async refresh() {
     const d = this.debugger;
-    if (!d) return;
+    if (!d || !this.available) return;
     const at = this.anchor ?? d.lastStop?.pc;
     if (at === undefined || at === null) return;
     try {
@@ -69,6 +74,9 @@ export class ProbeDisassembly extends DebuggerElement {
   render() {
     const d = this.debugger;
     if (!d) return html`<div class="muted">no debugger</div>`;
+    if (!this.available) {
+      return html`<div class="muted unavailable">Disassembly is not available on this connection (the WebUSB transport has no disassembler; use probe-rs serve for it).</div>`;
+    }
     const pc = d.state === 'halted' ? d.lastStop?.pc : undefined;
     const bps = new Set(d.breakpoints().filter((b) => b.verified && b.address !== null).map((b) => b.address!));
     let lastSource = '';

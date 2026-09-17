@@ -14,3 +14,5 @@ packages/client/worker/fake/
 apps/flash/public/firmware/*.elf
 test-results/
 playwright-report/
+# TypeScript incremental build state
+*.tsbuildinfo

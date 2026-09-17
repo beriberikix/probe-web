@@ -8,8 +8,11 @@
 //! (see spikes/README.md, "capability negotiation").
 
 mod convert;
+mod core_ops;
+mod debug_state;
 mod info;
 mod semihosting;
+mod svd;
 mod server;
 
 use postcard_rpc::server::{Dispatch, Server, WireRxErrorKind};
@@ -17,12 +20,12 @@ use probe_rs_rpc::transport::memory::{WireRx, WireTx};
 use tokio::sync::mpsc;
 use wasm_bindgen::prelude::*;
 
-fn tracing_subscriber_for_wasm() -> impl tracing::Subscriber + Send + Sync {
+fn tracing_subscriber_for_wasm(level: tracing::Level) -> impl tracing::Subscriber + Send + Sync {
     // tracing_wasm exposes only a layer; wrap it in a registry.
     use tracing_subscriber::layer::SubscriberExt;
     tracing_subscriber::Registry::default().with(tracing_wasm::WASMLayer::new(
         tracing_wasm::WASMLayerConfigBuilder::new()
-            .set_max_level(tracing::Level::WARN)
+            .set_max_level(level)
             .set_report_logs_in_timings(false)
             .set_console_config(tracing_wasm::ConsoleConfig::ReportWithoutConsoleColor)
             .build(),
@@ -43,7 +46,7 @@ pub(crate) fn log(s: &str) {
 /// Start the server. Returns a JS function that feeds one client frame (a
 /// `Uint8Array`); replies and topic messages go out via `postMessage`.
 #[wasm_bindgen]
-pub fn start() -> js_sys::Function {
+pub fn start(log_level: Option<String>) -> js_sys::Function {
     // Log the panic as before, and tell the page: a wasm panic leaves this instance
     // unusable, so the client must fail pending calls instead of waiting forever.
     std::panic::set_hook(Box::new(|info| {
@@ -52,9 +55,14 @@ pub fn start() -> js_sys::Function {
     }));
     // probe-rs's own tracing goes to the worker console (and from there to the
     // page via local-worker.js). WARN by default; raise to INFO to see the vendor sequences' steps.
-    let _ = tracing::subscriber::set_global_default(
-        tracing_subscriber_for_wasm(),
-    );
+    let level = match log_level.as_deref().unwrap_or("warn").to_ascii_lowercase().as_str() {
+        "trace" => tracing::Level::TRACE,
+        "debug" => tracing::Level::DEBUG,
+        "info" => tracing::Level::INFO,
+        "error" => tracing::Level::ERROR,
+        _ => tracing::Level::WARN,
+    };
+    let _ = tracing::subscriber::set_global_default(tracing_subscriber_for_wasm(level));
 
     let (c2s_tx, c2s_rx) = mpsc::channel::<Result<Vec<u8>, WireRxErrorKind>>(256);
     let (s2c_tx, mut s2c_rx) = mpsc::channel::<Vec<u8>>(256);

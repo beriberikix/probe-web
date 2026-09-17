@@ -146,4 +146,18 @@ describe('ProbeDebugAdapter', () => {
     fail('probe disconnected');
     expect(stderr()).toHaveLength(3);
   });
+  it('announces that disassembly is unavailable on connections without a disassembler', async () => {
+    const fake = new FakeDebugger();
+    (fake as unknown as { canDisassemble: boolean }).canDisassemble = false;
+    const { request, nextEvent } = harness(fake);
+    const init = await request<DP.InitializeResponse>('initialize', { adapterID: 'probe-rs' });
+    expect(init.body?.supportsDisassembleRequest).toBe(true);
+    await request('launch', {});
+    const caps = await nextEvent('capabilities');
+    expect(caps.body).toEqual({ capabilities: { supportsDisassembleRequest: false } });
+    await nextEvent('initialized');
+    const dis = await request<DP.DisassembleResponse>('disassemble', { memoryReference: '0x1000', instructionCount: 4 });
+    expect(dis.success).toBe(false);
+    expect(dis.message).toContain('not available');
+  });
 });

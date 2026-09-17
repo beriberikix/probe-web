@@ -5,8 +5,10 @@
 import init, * as local from './probe_web_local.js';
 // Mirror the worker's console to the page as "log:" strings so hosts can show
 // probe-rs diagnostics without opening the worker's DevTools context.
-const origLog = console.log.bind(console);
-console.log = (...args) => { origLog(...args); try { self.postMessage('log:' + args.join(' ')); } catch {} };
+for (const name of ['log', 'warn', 'error']) {
+  const orig = console[name].bind(console);
+  console[name] = (...args) => { orig(...args); try { self.postMessage('log:' + args.join(' ')); } catch {} };
+}
 const fatal = (reason) => { try { self.postMessage('fatal:' + reason); } catch {} };
 self.addEventListener('error', (ev) => fatal(ev.message || 'uncaught error'));
 self.addEventListener('unhandledrejection', (ev) => fatal(String(ev.reason?.message ?? ev.reason)));
@@ -22,7 +24,8 @@ self.onmessage = (ev) => {
 };
 try {
   await init();
-  recv = local.start();
+  // ?log=<level> on this worker's own URL raises probe-rs's tracing level.
+  recv = local.start(new URL(import.meta.url).searchParams.get('log') ?? undefined);
 } catch (e) {
   fatal(`failed to start: ${e?.message ?? e}`);
   throw e;

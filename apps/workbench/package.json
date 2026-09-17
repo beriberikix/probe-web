@@ -8,6 +8,7 @@
     "@probe-web/artifacts": "*",
     "@probe-web/client": "*",
     "@probe-web/dap": "*",
+    "@probe-web/devices": "*",
     "@probe-web/ui": "*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",

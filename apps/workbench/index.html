@@ -29,9 +29,14 @@
 <body>
   <header>
     <h1>probe-web workbench</h1>
+    <select id="transport" title="Where probe-rs runs: on a server reached over WebSocket, or in this page over WebUSB">
+      <option value="websocket">WebSocket</option>
+      <option value="webusb">WebUSB</option>
+    </select>
     <input id="url" value="ws://127.0.0.1:3000" size="18" title="probe-rs serve URL">
     <input id="token" placeholder="token" size="7">
     <input id="probe" placeholder="probe (substring)" size="12">
+    <button id="pick-probe" hidden title="Let this page use a probe over WebUSB (the browser asks which one)">Select probe…</button>
     <input id="chip" placeholder="chip" size="10">
     <select id="protocol" title="wire protocol"><option>Swd</option><option>Jtag</option></select>
     <span class="sep"></span>

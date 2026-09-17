@@ -17,10 +17,15 @@ export type DebuggerLike = Pick<Debugger,
   | 'continue' | 'pause' | 'step' | 'reset' | 'resetAndHalt'
   | 'loadDebugInfo' | 'loadSvd' | 'stackTrace' | 'scopes' | 'variables' | 'evaluate' | 'setVariable'
   | 'setSourceBreakpoints' | 'setInstructionBreakpoints' | 'disassemble' | 'readMemory' | 'writeMemory' | 'writeRegister'>
-  & Partial<Pick<Debugger, 'enableRtt'>>;
+  & Partial<Pick<Debugger, 'enableRtt' | 'canDisassemble'>>;
 
 /** Arguments of `launch` / `attach` (custom fields of this adapter). */
 export interface ProbeLaunchArguments extends DP.LaunchRequestArguments {
+  /**
+   * `websocket` (default): `probe-rs serve` at `url`. `webusb`: probe-rs in a Worker in this page,
+   * over WebUSB (the probe must already be granted to the page; no disassembly).
+   */
+  transport?: 'websocket' | 'webusb';
   /** `probe-rs serve` WebSocket URL and token. */
   url?: string;
   token?: string;
@@ -241,6 +246,10 @@ export class ProbeDebugAdapter {
       this.entryStop = await dbg.resetAndHalt();
     }
     dbg.start();
+    if (dbg.canDisassemble === false) {
+      // Capabilities are answered before the connection exists; correct them now (DAP `capabilities` event).
+      this.event('capabilities', { capabilities: { supportsDisassembleRequest: false } });
+    }
     this.event('output', { category: 'console', output: `probe-rs: ${kind === 'launch' ? 'launched' : 'attached'}\n` });
     // Breakpoints can be set now; stop/continue events flow after configurationDone.
     this.event('initialized');
@@ -476,6 +485,7 @@ export class ProbeDebugAdapter {
   }
 
   protected async on_disassemble(_r: DP.DisassembleRequest, a: DP.DisassembleArguments): Promise<DP.DisassembleResponse['body']> {
+    if (this.d.canDisassemble === false) throw new Error('disassembly is not available on this connection (the WebUSB transport has no disassembler)');
     const list = await this.d.disassemble(BigInt(a.memoryReference), a.instructionCount, a.instructionOffset ?? 0, a.offset ?? 0);
     return {
       instructions: list.map((i) => ({
@@ -494,15 +504,18 @@ export class ProbeDebugAdapter {
  * (unless `flash: false`), load debug info and the optional SVD.
  */
 export async function connectProbeRs(args: ProbeLaunchArguments, kind: 'launch' | 'attach'): Promise<ConnectResult> {
-  const { Client } = await import('@probe-web/client');
-  if (!args.url) throw new Error('launch/attach needs `url` (probe-rs serve WebSocket URL)');
-  const client = await Client.connect({ kind: 'websocket', url: args.url, token: args.token ?? '' });
+  const { openSession } = await import('@probe-web/client');
+  const transport = args.transport ?? 'websocket';
+  if (transport === 'websocket' && !args.url) throw new Error('launch/attach needs `url` (probe-rs serve WebSocket URL), or `transport: "webusb"`');
+  const { client, session } = await openSession({
+    transport,
+    url: args.url,
+    token: args.token,
+    probe: args.probe,
+    chip: args.chip,
+    protocol: args.protocol ?? 'Swd',
+  });
   try {
-    const probes = await client.listProbes();
-    const want = args.probe?.toLowerCase();
-    const probe = want ? probes.find((p) => `${p.identifier} ${p.serial_number}`.toLowerCase().includes(want)) : probes[0];
-    if (!probe) throw new Error(`no probe matching ${JSON.stringify(args.probe ?? '')}`);
-    const session = await client.attach({ probe, chip: args.chip, protocol: args.protocol ?? 'Swd' });
     const program = args.program === undefined ? null : await bytesOf(args.program);
     const name = typeof args.program === 'string' ? args.program : 'program.elf';
     if (program && kind === 'launch' && args.flash !== false) {

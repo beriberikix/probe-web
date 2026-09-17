@@ -6,7 +6,8 @@ import 'dockview/dist/styles/dockview.css';
 import '@probe-web/ui';
 import { createDockview, type DockviewApi, type IContentRenderer } from 'dockview';
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
-import { Client, DirectorySourceProvider, elfHasRtt, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider } from '@probe-web/client';
+import { Client, DirectorySourceProvider, elfHasRtt, openSession, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider } from '@probe-web/client';
+import { describe, hasWebUsb, requestProbe } from '@probe-web/devices';
 import { FakeDebugger } from '@probe-web/client/testing';
 import { ProbeDebugAdapter, type DebuggerLike } from '@probe-web/dap';
 import { FileArtifact, hasFileSystemAccess, indexedDbHandleStore, pickFile, restoreHandles, type FileHandleLike, type PermissionHandleLike, type RestoreEntry } from '@probe-web/artifacts';
@@ -139,7 +140,7 @@ $('reset-layout').onclick = () => {
 
 // ------------------------------------------------------------------ settings
 
-const inputs = ['url', 'token', 'probe', 'chip', 'protocol'] as const;
+const inputs = ['transport', 'url', 'token', 'probe', 'chip', 'protocol'] as const;
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Record<string, string>;
   for (const k of inputs) if (saved[k]) $<HTMLInputElement>(k).value = saved[k];
@@ -147,6 +148,28 @@ try {
 for (const k of inputs) if (qs.get(k)) $<HTMLInputElement>(k).value = qs.get(k)!;
 const saveSettings = () => {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.fromEntries(inputs.map((k) => [k, $<HTMLInputElement>(k).value])))); } catch { /* ignore */ }
+};
+
+/** WebUSB runs probe-rs in this page, so the server fields do not apply and a probe must be granted. */
+function applyTransport() {
+  const webusb = $<HTMLSelectElement>('transport').value === 'webusb';
+  for (const id of ['url', 'token']) $<HTMLInputElement>(id).hidden = webusb;
+  $<HTMLButtonElement>('pick-probe').hidden = !webusb;
+}
+$('transport').onchange = () => { applyTransport(); saveSettings(); };
+applyTransport();
+
+$('pick-probe').onclick = async () => {
+  if (!hasWebUsb()) { log('this browser has no WebUSB (Chromium only); use the WebSocket transport', 'red'); return; }
+  try {
+    const device = await requestProbe({ any: true });
+    const probe = describe(device);
+    $<HTMLInputElement>('probe').value = probe.serial || probe.label;
+    saveSettings();
+    log(`probe granted: ${probe.label}${probe.serial ? ` (${probe.serial})` : ''}`, 'gray');
+  } catch {
+    /* the chooser was dismissed */
+  }
 };
 
 // ------------------------------------------------------------------ sources, program, SVD
@@ -339,14 +362,18 @@ async function showTopFrame() {
 }
 
 async function connectReal(kind: 'launch' | 'attach') {
-  const url = $<HTMLInputElement>('url').value;
-  client = await Client.connect({ kind: 'websocket', url, token: $<HTMLInputElement>('token').value });
-  const probes = await client.listProbes();
-  const want = $<HTMLInputElement>('probe').value.toLowerCase();
-  const probe = want ? probes.find((p) => `${p.identifier} ${p.serial_number}`.toLowerCase().includes(want)) : probes[0];
-  if (!probe) throw new Error(`no probe matching "${want}" (found: ${probes.map((p) => p.identifier).join(', ') || 'none'})`);
-  session = await client.attach({ probe, chip: $<HTMLInputElement>('chip').value || undefined, protocol: $<HTMLInputElement>('protocol').value as 'Swd' | 'Jtag' });
-  log(`attached ${$<HTMLInputElement>('chip').value} via ${probe.identifier}`, 'gray');
+  const transport = $<HTMLSelectElement>('transport').value === 'webusb' ? 'webusb' : 'websocket';
+  const opened = await openSession({
+    transport,
+    url: $<HTMLInputElement>('url').value,
+    token: $<HTMLInputElement>('token').value,
+    probe: $<HTMLInputElement>('probe').value,
+    chip: $<HTMLInputElement>('chip').value || undefined,
+    protocol: $<HTMLInputElement>('protocol').value as 'Swd' | 'Jtag',
+    fake: qs.has('fakeProbe'),
+  });
+  ({ client, session } = opened);
+  log(`attached ${$<HTMLInputElement>('chip').value} via ${transport}: ${opened.probe.identifier}`, 'gray');
   if (elf && kind === 'launch') {
     const t0 = performance.now();
     // `target`: the chip's default image format (IDF with bootloader on ESP32 chips, ELF elsewhere).
@@ -452,6 +479,17 @@ addEventListener('pagehide', () => { client?.close(); });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Bring a panel to the front and return its element. dockview only renders a panel while its tab is
+ * active (source and console aside), so a panel that a restored layout left in a background tab has
+ * no DOM until it is shown - which is also what a user does before reading it.
+ */
+async function show(name: string): Promise<(HTMLElement & { debugger: Debugger | null }) | undefined> {
+  dock.getPanel(name)?.api.setActive();
+  await sleep(150);
+  return elements.get(name);
+}
+
 if (qs.has('fake')) {
   // A synthetic source for the fake program's DWARF path.
   sources = { read: async (p) => (p === '/build/fw/src/main.rs' ? Array.from({ length: 80 }, (_, i) => `// line ${i + 1}`).join('\n') : null), resolve: async () => null };
@@ -478,13 +516,13 @@ if (qs.has('auto')) {
       await sleep(1500);
       check('source view shows main.rs with the PC at the breakpoint line', !!source.path?.endsWith(srcPath) && source.pcLine === bpLine, `${source.path}:${source.pcLine}`);
       check('source view shows the breakpoint glyph', source.breakpointLines().includes(bpLine), JSON.stringify(source.breakpointLines()));
-      const stackRow = elements.get('callstack')?.shadowRoot?.querySelector('tr.selected')?.getAttribute('data-frame');
+      const stackRow = (await show('callstack'))?.shadowRoot?.querySelector('tr.selected')?.getAttribute('data-frame');
       check('call stack panel selects step_b', stackRow === 'step_b', String(stackRow));
-      const hasPoint = !!elements.get('variables')?.shadowRoot?.querySelector('[data-path="Variables/point"]');
+      const hasPoint = !!(await show('variables'))?.shadowRoot?.querySelector('[data-path="Variables/point"]');
       check('variables panel shows point', hasPoint, String(hasPoint));
 
       // Memory panel: watch TABLE (a [u16; 4] static), view it, then lock the view.
-      const mem = elements.get('memory') as unknown as import('@probe-web/ui').ProbeMemoryView | undefined;
+      const mem = (await show('memory')) as unknown as import('@probe-web/ui').ProbeMemoryView | undefined;
       if (mem) {
         const h = await mem.watch('TABLE');
         await mem.goTo(h.address, 32);
@@ -507,7 +545,7 @@ if (qs.has('auto')) {
       await source.onToggleBreakpoint(source.path!, bpLine); // remove the first one
       await sleep(300);
       const next = new Promise<void>((r) => { const off = dap!.on('stopped', () => { off(); r(); }); });
-      (elements.get('controls')?.shadowRoot?.querySelector('button[title="Continue"]') as HTMLButtonElement | undefined)?.click();
+      ((await show('controls'))?.shadowRoot?.querySelector('button[title="Continue"]') as HTMLButtonElement | undefined)?.click();
       await next;
       await sleep(1200);
       check('continue (Run panel) stops at the gutter breakpoint', source.pcLine === later, `pc line ${source.pcLine}`);

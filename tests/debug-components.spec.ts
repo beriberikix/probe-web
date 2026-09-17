@@ -94,9 +94,12 @@ test.describe('debugger components (fake debugger)', () => {
   });
 });
 
-test('debugger() refuses clearly on the WebUSB worker, which lacks debug endpoints', async ({ page }) => {
+test('debugger() is available on the WebUSB worker, which now serves the debug endpoints (fake probe)', async ({ page }) => {
   await page.goto('/debug.html?webusb-fake=1');
-  await expect(page.locator('#log')).toContainText('UNSUPPORTED_RESULT=', { timeout: 30_000 });
-  await expect(page.locator('#log')).toContainText('UNSUPPORTED_RESULT=PASS');
-  await expect(page.locator('#log')).toContainText('connect to probe-rs serve over WebSocket');
+  await expect(page.locator('#log')).toContainText('DEBUGGER_RESULT=', { timeout: 30_000 });
+  await expect(page.locator('#log')).toContainText('DEBUGGER_RESULT=PASS');
+  await expect(page.locator('#log')).toContainText('pause → "Request"');
+  // The worker has no disassembler: the panel says so instead of showing an error.
+  await expect(page.locator('#log')).toContainText('disassembly panel: Disassembly is not available on this connection');
+  await expect(page.locator('probe-disassembly .unavailable')).toBeVisible();
 });
