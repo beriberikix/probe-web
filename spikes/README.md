@@ -257,7 +257,8 @@ and the components page are Cortex-M specific; the workbench remembers the last 
 URLs pass `protocol=`; Playwright's Chromium cannot read `FileSystemHandle`s back from IndexedDB, so
 the Reopen path is checked by hand; debugging over WebUSB is Phase 4.
 
-Not committed: probe-web since `42a150d`, and the `prs-wasm-rpc` working tree. Upstream probe-rs
-branches (`fix/xtensa-unwind-step-out`, `fix/serve-unknown-handles`,
-`fix/run-loop-rtt-scan-parked-cores`) are committed locally in `../prs-up-*`, not pushed.
+Committed and pushed: probe-web `b0f7f77`, `prs-wasm-rpc` branch `wasm-rpc-client` `b33b226f`
+(fork). The upstream probe-rs branches (`fix/xtensa-unwind-step-out`, `fix/serve-unknown-handles`,
+`fix/run-loop-rtt-scan-parked-cores`) stay local in `../prs-up-*`: upstream PRs are deferred until
+some time after probe-web is public.
 
