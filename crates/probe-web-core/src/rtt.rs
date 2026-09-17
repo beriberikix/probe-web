@@ -11,9 +11,19 @@ use serde::Serialize;
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum RttOutput {
-    Text { channel: u32, text: String },
-    Defmt { channel: u32, lines: Vec<DefmtLine>, malformed: bool },
-    Bytes { channel: u32, bytes: Vec<u8> },
+    Text {
+        channel: u32,
+        text: String,
+    },
+    Defmt {
+        channel: u32,
+        lines: Vec<DefmtLine>,
+        malformed: bool,
+    },
+    Bytes {
+        channel: u32,
+        bytes: Vec<u8>,
+    },
 }
 
 #[derive(Serialize)]
@@ -40,7 +50,12 @@ pub struct RttDecoders {
 
 impl RttDecoders {
     pub fn new(configs: Vec<RttChannelConfig>, default: RttChannelConfig) -> Self {
-        Self { configs, default, table: None, per_channel: HashMap::new() }
+        Self {
+            configs,
+            default,
+            table: None,
+            per_channel: HashMap::new(),
+        }
     }
 
     pub fn set_elf(&mut self, elf: &[u8]) -> Result<bool, String> {
@@ -77,8 +92,14 @@ impl RttDecoders {
             self.per_channel.insert(channel, d);
         }
         match self.per_channel.get_mut(&channel).unwrap() {
-            Decoder::Text => RttOutput::Text { channel, text: String::from_utf8_lossy(bytes).into_owned() },
-            Decoder::Bytes | Decoder::DefmtMissingTable => RttOutput::Bytes { channel, bytes: bytes.to_vec() },
+            Decoder::Text => RttOutput::Text {
+                channel,
+                text: String::from_utf8_lossy(bytes).into_owned(),
+            },
+            Decoder::Bytes | Decoder::DefmtMissingTable => RttOutput::Bytes {
+                channel,
+                bytes: bytes.to_vec(),
+            },
             Decoder::Defmt(dec) => {
                 dec.received(bytes);
                 let mut lines = vec![];
@@ -97,7 +118,11 @@ impl RttDecoders {
                         }
                     }
                 }
-                RttOutput::Defmt { channel, lines, malformed }
+                RttOutput::Defmt {
+                    channel,
+                    lines,
+                    malformed,
+                }
             }
         }
     }

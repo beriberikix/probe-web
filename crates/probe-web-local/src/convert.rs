@@ -1,13 +1,16 @@
 //! probe-rs (fork) ↔ probe-rs-rpc wire type conversions.
 
-use probe_rs::{CoreStatus, CoreType, HaltReason, BreakpointCause, flashing};
+use probe_rs::{BreakpointCause, CoreStatus, CoreType, HaltReason, flashing};
 use probe_rs_rpc::{
     chip::{GenericRegion, MemoryAccess, MemoryRegion, NvmRegion, RamRegion},
     core_ops::{
-        WireBreakpointCause, WireCoreType, WireCoreStatus, WireExitErrorDetails, WireHaltReason,
+        WireBreakpointCause, WireCoreStatus, WireCoreType, WireExitErrorDetails, WireHaltReason,
         WireSemihostingCommand,
     },
-    flash::{BootInfo, FlashDataBlockSpan, FlashFill, FlashLayout, FlashPage, FlashSector, Operation, ProgressEvent},
+    flash::{
+        BootInfo, FlashDataBlockSpan, FlashFill, FlashLayout, FlashPage, FlashSector, Operation,
+        ProgressEvent,
+    },
     info::WireFlashSector,
     rtt_client::ScanRegion,
 };
@@ -41,7 +44,12 @@ pub fn chip_core_type(t: CoreType) -> probe_rs_rpc::chip::CoreType {
 }
 
 fn access(a: probe_rs::config::MemoryAccess) -> MemoryAccess {
-    MemoryAccess { read: a.read, write: a.write, execute: a.execute, boot: a.boot }
+    MemoryAccess {
+        read: a.read,
+        write: a.write,
+        execute: a.execute,
+        boot: a.boot,
+    }
 }
 
 pub fn memory_region(r: probe_rs::config::MemoryRegion) -> MemoryRegion {
@@ -80,7 +88,10 @@ pub fn flash_sectors(target: &probe_rs::Target) -> Vec<WireFlashSector> {
             .unwrap_or(algo.flash_properties.address_range.end);
         let mut sectors = algo.flash_properties.sectors.clone();
         sectors.sort_by_key(|s| s.address);
-        sectors.push(probe_rs::config::SectorDescription { size: 0, address: end - start });
+        sectors.push(probe_rs::config::SectorDescription {
+            size: 0,
+            address: end - start,
+        });
         for (cur, next) in sectors.iter().zip(sectors.iter().skip(1)) {
             out.push(WireFlashSector {
                 start: start + cur.address,
@@ -147,9 +158,13 @@ pub fn core_status(s: CoreStatus) -> WireCoreStatus {
 
 pub fn boot_info(b: flashing::BootInfo) -> BootInfo {
     match b {
-        flashing::BootInfo::FromRam { vector_table_addr, cores_to_reset } => {
-            BootInfo::FromRam { vector_table_addr, cores_to_reset }
-        }
+        flashing::BootInfo::FromRam {
+            vector_table_addr,
+            cores_to_reset,
+        } => BootInfo::FromRam {
+            vector_table_addr,
+            cores_to_reset,
+        },
         flashing::BootInfo::Other => BootInfo::Other,
     }
 }
@@ -166,17 +181,38 @@ fn operation(o: flashing::ProgressOperation) -> Operation {
 
 fn layout(l: &flashing::FlashLayout) -> FlashLayout {
     FlashLayout {
-        sectors: l.sectors().iter().map(|s| FlashSector { address: s.address(), size: s.size() }).collect(),
-        pages: l.pages().iter().map(|p| FlashPage { address: p.address(), data_len: p.size() as u64 }).collect(),
+        sectors: l
+            .sectors()
+            .iter()
+            .map(|s| FlashSector {
+                address: s.address(),
+                size: s.size(),
+            })
+            .collect(),
+        pages: l
+            .pages()
+            .iter()
+            .map(|p| FlashPage {
+                address: p.address(),
+                data_len: p.size() as u64,
+            })
+            .collect(),
         fills: l
             .fills()
             .iter()
-            .map(|f| FlashFill { address: f.address(), size: f.size(), page_index: f.page_index() as u64 })
+            .map(|f| FlashFill {
+                address: f.address(),
+                size: f.size(),
+                page_index: f.page_index() as u64,
+            })
             .collect(),
         data_blocks: l
             .data_blocks()
             .iter()
-            .map(|d| FlashDataBlockSpan { address: d.address(), size: d.size() })
+            .map(|d| FlashDataBlockSpan {
+                address: d.address(),
+                size: d.size(),
+            })
             .collect(),
     }
 }
@@ -187,9 +223,22 @@ pub fn progress(e: flashing::ProgressEvent) -> ProgressEvent {
         E::FlashLayoutReady { flash_layout } => ProgressEvent::FlashLayoutReady {
             flash_layout: flash_layout.iter().map(layout).collect(),
         },
-        E::AddProgressBar { operation: op, total } => ProgressEvent::AddProgressBar { operation: operation(op), total },
+        E::AddProgressBar {
+            operation: op,
+            total,
+        } => ProgressEvent::AddProgressBar {
+            operation: operation(op),
+            total,
+        },
         E::Started(op) => ProgressEvent::Started(operation(op)),
-        E::Progress { operation: op, size, .. } => ProgressEvent::Progress { operation: operation(op), size },
+        E::Progress {
+            operation: op,
+            size,
+            ..
+        } => ProgressEvent::Progress {
+            operation: operation(op),
+            size,
+        },
         E::Failed(op) => ProgressEvent::Failed(operation(op)),
         E::Finished(op) => ProgressEvent::Finished(operation(op)),
         E::DiagnosticMessage { message } => ProgressEvent::DiagnosticMessage { message },
@@ -199,7 +248,9 @@ pub fn progress(e: flashing::ProgressEvent) -> ProgressEvent {
 pub fn scan_region(s: ScanRegion) -> probe_rs::rtt::ScanRegion {
     match s {
         ScanRegion::Ram => probe_rs::rtt::ScanRegion::Ram,
-        ScanRegion::Ranges(v) => probe_rs::rtt::ScanRegion::Ranges(v.into_iter().map(|(a, b)| a..b).collect()),
+        ScanRegion::Ranges(v) => {
+            probe_rs::rtt::ScanRegion::Ranges(v.into_iter().map(|(a, b)| a..b).collect())
+        }
         ScanRegion::Exact(a) => probe_rs::rtt::ScanRegion::Exact(a),
     }
 }

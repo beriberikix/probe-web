@@ -9,10 +9,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # The async fork with the nusb 0.2.7 WebUSB port (this session's branch).
-probe-rs = { path = "../../../probe-rs/probe-rs", default-features = false, features = ["builtin-targets"] }
+probe-rs = { git = "https://github.com/beriberikix/probe-rs", branch = "webusb/nusb-0.2.7", default-features = false, features = ["builtin-targets"] }
 # master's wire schema + client, with the wasm patch.
-probe-rs-rpc = { path = "../../../prs-wasm-rpc/probe-rs-rpc" }
-probe-rs-rpc-client = { path = "../../../prs-wasm-rpc/probe-rs-rpc-client" }
+probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
+probe-rs-rpc-client = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 postcard-rpc = { version = "0.12", features = ["use-std"] }
 postcard = { version = "1", features = ["use-std"] }
 tokio = { version = "1", features = ["sync", "macros"] }

@@ -33,7 +33,9 @@ use js::{client_err, error, from_js, to_js};
 pub fn elf_symbol_address(elf: &[u8], name: &str) -> Option<u64> {
     use object::{Object, ObjectSymbol};
     let file = object::File::parse(elf).ok()?;
-    file.symbols().find(|s| s.name() == Ok(name)).map(|s| s.address())
+    file.symbols()
+        .find(|s| s.name() == Ok(name))
+        .map(|s| s.address())
 }
 
 /// Address of the RTT control block (`_SEGGER_RTT`) in an ELF, if present.
@@ -73,7 +75,12 @@ impl ProbeWebClient {
     pub async fn connect_web_socket(url: String, token: String) -> Result<ProbeWebClient, JsValue> {
         console_error_panic_hook::set_once();
         let (client, caps, ws) = transport::connect_web_socket(&url, &token).await?;
-        Ok(Self { client, local: false, caps, socket: Some(ws) })
+        Ok(Self {
+            client,
+            local: false,
+            caps,
+            socket: Some(ws),
+        })
     }
 
     /// Connect to a Worker running the probe-web local server (probe-rs in wasm over WebUSB).
@@ -81,7 +88,12 @@ impl ProbeWebClient {
     pub async fn connect_worker(worker: web_sys::Worker) -> Result<ProbeWebClient, JsValue> {
         console_error_panic_hook::set_once();
         let (client, caps) = transport::connect_worker(worker).await?;
-        Ok(Self { client, local: true, caps, socket: None })
+        Ok(Self {
+            client,
+            local: true,
+            caps,
+            socket: None,
+        })
     }
 
     /// Close the connection now (WebSocket: the server ends the session and releases the probe).
@@ -152,7 +164,12 @@ impl ProbeWebClient {
     /// Rejects with `kind` = `probe-not-found` | `probe-in-use` | `open-failed` | `attach-failed`.
     pub async fn attach(&self, request: JsValue) -> Result<ProbeWebSession, JsValue> {
         let request: AttachRequest = from_js(request)?;
-        match self.client.attach_probe(request).await.map_err(client_err)? {
+        match self
+            .client
+            .attach_probe(request)
+            .await
+            .map_err(client_err)?
+        {
             AttachResult::Success(key) => Ok(ProbeWebSession {
                 session: SessionInterface::new(self.client.clone(), key),
                 rtt: Rc::new(RefCell::new(None)),
@@ -160,9 +177,16 @@ impl ProbeWebClient {
             AttachResult::ProbeNotFound => Err(error("probe-not-found", "probe not found")),
             AttachResult::ProbeInUse => Err(error("probe-in-use", "probe is in use")),
             AttachResult::FailedToOpenProbe(m) => Err(error("open-failed", m)),
-            AttachResult::TargetAttachFailed { message, connect_under_reset } => {
+            AttachResult::TargetAttachFailed {
+                message,
+                connect_under_reset,
+            } => {
                 let e = error("attach-failed", message);
-                let _ = js_sys::Reflect::set(&e, &"connectUnderReset".into(), &connect_under_reset.into());
+                let _ = js_sys::Reflect::set(
+                    &e,
+                    &"connectUnderReset".into(),
+                    &connect_under_reset.into(),
+                );
                 Err(e)
             }
         }
@@ -221,7 +245,9 @@ impl ProbeWebSession {
             .await
             .map_err(client_err)?;
         self.session
-            .flash(options, loader.loader, async |event| call(&on_progress, to_js(&event)))
+            .flash(options, loader.loader, async |event| {
+                call(&on_progress, to_js(&event))
+            })
             .await
             .map_err(client_err)?;
         to_js(&loader.boot_info)
@@ -248,7 +274,9 @@ impl ProbeWebSession {
             .map_err(client_err)?;
         let result = self
             .session
-            .verify(loader.loader, async |event| call(&on_progress, to_js(&event)))
+            .verify(loader.loader, async |event| {
+                call(&on_progress, to_js(&event))
+            })
             .await
             .map_err(client_err)?;
         to_js(&result)
@@ -265,7 +293,10 @@ impl ProbeWebSession {
     /// Reset/boot the target according to `boot_info` (from `flash()`) on `core`.
     pub async fn boot(&self, boot_info: JsValue, core: u32) -> Result<(), JsValue> {
         let boot_info: BootInfo = from_js(boot_info)?;
-        self.session.boot(boot_info, core as usize).await.map_err(client_err)
+        self.session
+            .boot(boot_info, core as usize)
+            .await
+            .map_err(client_err)
     }
 
     /// Create the server-side RTT client. `scan_region` is a `ScanRegion`,
@@ -347,14 +378,21 @@ impl ProbeWebSession {
             .session
             .monitor(mode, options, async |msg| {
                 let v = match msg {
-                    MonitorEvent::Rtt(RttEvent::Discovered { up_channels, down_channels }) => {
+                    MonitorEvent::Rtt(RttEvent::Discovered {
+                        up_channels,
+                        down_channels,
+                    }) => {
                         #[derive(serde::Serialize)]
                         struct Discovered<'a> {
                             kind: &'static str,
                             up: &'a [probe_rs_rpc::monitor::ChannelInfo],
                             down: &'a [probe_rs_rpc::monitor::ChannelInfo],
                         }
-                        to_js(&Discovered { kind: "rtt-discovered", up: &up_channels, down: &down_channels })
+                        to_js(&Discovered {
+                            kind: "rtt-discovered",
+                            up: &up_channels,
+                            down: &down_channels,
+                        })
                     }
                     MonitorEvent::Rtt(RttEvent::Output { channel, bytes }) => {
                         let mut rtt = rtt.borrow_mut();
@@ -370,7 +408,11 @@ impl ProbeWebSession {
                             stream: String,
                             data: String,
                         }
-                        to_js(&Semi { kind: "semihosting", stream, data })
+                        to_js(&Semi {
+                            kind: "semihosting",
+                            stream,
+                            data,
+                        })
                     }
                 };
                 if let Ok(v) = v {
@@ -384,7 +426,12 @@ impl ProbeWebSession {
 
     /// Write to an RTT down channel; resolves with the number of bytes accepted.
     #[wasm_bindgen(js_name = rttWrite)]
-    pub async fn rtt_write(&self, channel: u32, data: Vec<u8>, timeout_ms: u32) -> Result<u32, JsValue> {
+    pub async fn rtt_write(
+        &self,
+        channel: u32,
+        data: Vec<u8>,
+        timeout_ms: u32,
+    ) -> Result<u32, JsValue> {
         let key = self
             .rtt
             .borrow()
@@ -407,7 +454,9 @@ impl ProbeWebSession {
     }
 
     pub fn core(&self, index: u32) -> ProbeWebCore {
-        ProbeWebCore { core: self.session.core(index as usize) }
+        ProbeWebCore {
+            core: self.session.core(index as usize),
+        }
     }
 
     // ------------------------------------------------------------ debugging
@@ -417,16 +466,30 @@ impl ProbeWebSession {
     /// Upload an ELF (content-hash cached) and load its DWARF for this session.
     #[wasm_bindgen(js_name = loadDebugInfo)]
     pub async fn load_debug_info(&self, elf: Vec<u8>, name: String) -> Result<(), JsValue> {
-        let upload = self.session.resolve_upload_bytes(Path::new(&name), &elf).await.map_err(client_err)?;
-        self.session.load_debug_info_resolved(&upload).await.map_err(client_err)
+        let upload = self
+            .session
+            .resolve_upload_bytes(Path::new(&name), &elf)
+            .await
+            .map_err(client_err)?;
+        self.session
+            .load_debug_info_resolved(&upload)
+            .await
+            .map_err(client_err)
     }
 
     /// Replace the SVD for `core` (upload, then load; a failed parse clears it).
     #[wasm_bindgen(js_name = loadSvd)]
     pub async fn load_svd(&self, core: u32, svd: Vec<u8>, name: String) -> Result<(), JsValue> {
         self.session.clear_svd(core).await.map_err(client_err)?;
-        let upload = self.session.resolve_upload_bytes(Path::new(&name), &svd).await.map_err(client_err)?;
-        self.session.load_svd_at(core, upload.server_path()).await.map_err(client_err)
+        let upload = self
+            .session
+            .resolve_upload_bytes(Path::new(&name), &svd)
+            .await
+            .map_err(client_err)?;
+        self.session
+            .load_svd_at(core, upload.server_path())
+            .await
+            .map_err(client_err)
     }
 
     #[wasm_bindgen(js_name = clearSvd)]
@@ -437,46 +500,113 @@ impl ProbeWebSession {
     /// `stack_trace/rich` for one core (replaces the server's frame/variable caches).
     #[wasm_bindgen(js_name = richStackTrace)]
     pub async fn rich_stack_trace(&self, core: u32, limit: u32) -> Result<JsValue, JsValue> {
-        to_js(&self.session.take_rich_stack_trace(Some(core), limit).await.map_err(client_err)?)
+        to_js(
+            &self
+                .session
+                .take_rich_stack_trace(Some(core), limit)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     pub async fn scopes(&self, core: u32, frame_id: u32) -> Result<JsValue, JsValue> {
-        to_js(&self.session.scopes(core, frame_id).await.map_err(client_err)?)
+        to_js(
+            &self
+                .session
+                .scopes(core, frame_id)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
-    pub async fn variables(&self, core: u32, reference: u32, filter: Option<String>) -> Result<JsValue, JsValue> {
-        to_js(&self.session.variables(core, reference, filter).await.map_err(client_err)?)
+    pub async fn variables(
+        &self,
+        core: u32,
+        reference: u32,
+        filter: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .session
+                .variables(core, reference, filter)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
-    pub async fn evaluate(&self, core: u32, frame_id: Option<u32>, expression: String) -> Result<JsValue, JsValue> {
-        to_js(&self.session.evaluate(core, frame_id, expression).await.map_err(client_err)?)
+    pub async fn evaluate(
+        &self,
+        core: u32,
+        frame_id: Option<u32>,
+        expression: String,
+    ) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .session
+                .evaluate(core, frame_id, expression)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = setVariable)]
-    pub async fn set_variable(&self, core: u32, parent_key: i64, name: String, value: String) -> Result<JsValue, JsValue> {
-        to_js(&self.session.set_variable(core, parent_key, name, value).await.map_err(client_err)?)
+    pub async fn set_variable(
+        &self,
+        core: u32,
+        parent_key: i64,
+        name: String,
+        value: String,
+    ) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .session
+                .set_variable(core, parent_key, name, value)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = clearCoreDebugState)]
     pub async fn clear_core_debug_state(&self, core: u32) -> Result<(), JsValue> {
-        self.session.clear_core_debug_state(core).await.map_err(client_err)
+        self.session
+            .clear_core_debug_state(core)
+            .await
+            .map_err(client_err)
     }
 
     /// `mode`: "StepInstruction" | "OverStatement" | "IntoStatement" | "OutOfStatement".
     pub async fn step(&self, core: u32, mode: JsValue) -> Result<JsValue, JsValue> {
         let mode: WireSteppingMode = from_js(mode)?;
-        to_js(&self.session.debug_step(core, mode).await.map_err(client_err)?)
+        to_js(
+            &self
+                .session
+                .debug_step(core, mode)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = resolveSourceBreakpoints)]
     pub async fn resolve_source_breakpoints(&self, locations: JsValue) -> Result<JsValue, JsValue> {
         let locations: Vec<SourceBreakpointLocation> = from_js(locations)?;
-        to_js(&self.session.resolve_source_breakpoints(locations).await.map_err(client_err)?)
+        to_js(
+            &self
+                .session
+                .resolve_source_breakpoints(locations)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = resolveSourceLocations)]
     pub async fn resolve_source_locations(&self, addresses: Vec<u64>) -> Result<JsValue, JsValue> {
-        to_js(&self.session.resolve_source_locations(addresses).await.map_err(client_err)?)
+        to_js(
+            &self
+                .session
+                .resolve_source_locations(addresses)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     pub async fn disassemble(
@@ -490,7 +620,13 @@ impl ProbeWebSession {
         to_js(
             &self
                 .session
-                .disassemble(core, memory_reference, byte_offset, instruction_offset, instruction_count)
+                .disassemble(
+                    core,
+                    memory_reference,
+                    byte_offset,
+                    instruction_offset,
+                    instruction_count,
+                )
                 .await
                 .map_err(client_err)?,
         )
@@ -500,8 +636,19 @@ impl ProbeWebSession {
     /// firmware has set up its control block).
     #[wasm_bindgen(js_name = rttChannels)]
     pub async fn rtt_channels(&self) -> Result<JsValue, JsValue> {
-        let key = self.rtt.borrow().as_ref().map(|r| r.key).ok_or_else(|| error("state", "call createRttClient first"))?;
-        to_js(&self.session.get_rtt_channels(key).await.map_err(client_err)?)
+        let key = self
+            .rtt
+            .borrow()
+            .as_ref()
+            .map(|r| r.key)
+            .ok_or_else(|| error("state", "call createRttClient first"))?;
+        to_js(
+            &self
+                .session
+                .get_rtt_channels(key)
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     /// Read the given up channels once (without the monitor loop, e.g. while debugging) and
@@ -509,11 +656,22 @@ impl ProbeWebSession {
     /// channels with nothing new are omitted, failed reads are returned as `{kind: "error", channel, message}`.
     #[wasm_bindgen(js_name = pollRtt)]
     pub async fn poll_rtt(&self, channels: Vec<u32>) -> Result<js_sys::Array, JsValue> {
-        let key = self.rtt.borrow().as_ref().map(|r| r.key).ok_or_else(|| error("state", "call createRttClient first"))?;
-        let results = self.session.poll_rtt_up(key, channels).await.map_err(client_err)?;
+        let key = self
+            .rtt
+            .borrow()
+            .as_ref()
+            .map(|r| r.key)
+            .ok_or_else(|| error("state", "call createRttClient first"))?;
+        let results = self
+            .session
+            .poll_rtt_up(key, channels)
+            .await
+            .map_err(client_err)?;
         let out = js_sys::Array::new();
         let mut rtt = self.rtt.borrow_mut();
-        let state = rtt.as_mut().ok_or_else(|| error("state", "RTT client was cleared"))?;
+        let state = rtt
+            .as_mut()
+            .ok_or_else(|| error("state", "RTT client was cleared"))?;
         for r in results {
             match r.result {
                 Ok(bytes) if bytes.is_empty() => {}
@@ -527,7 +685,11 @@ impl ProbeWebSession {
                         channel: u32,
                         message: String,
                     }
-                    out.push(&to_js(&PollError { kind: "error", channel: r.channel, message: e.to_string() })?);
+                    out.push(&to_js(&PollError {
+                        kind: "error",
+                        channel: r.channel,
+                        message: e.to_string(),
+                    })?);
                 }
             }
         }
@@ -536,8 +698,18 @@ impl ProbeWebSession {
 
     /// `cores`: `null` for all cores.
     #[wasm_bindgen(js_name = haltCores)]
-    pub async fn halt_cores(&self, cores: Option<Vec<u32>>, timeout_ms: u32) -> Result<JsValue, JsValue> {
-        to_js(&self.session.halt_cores(cores, Duration::from_millis(timeout_ms as u64)).await.map_err(client_err)?)
+    pub async fn halt_cores(
+        &self,
+        cores: Option<Vec<u32>>,
+        timeout_ms: u32,
+    ) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .session
+                .halt_cores(cores, Duration::from_millis(timeout_ms as u64))
+                .await
+                .map_err(client_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = resumeCores)]
@@ -559,7 +731,13 @@ pub struct ProbeWebCore {
 #[wasm_bindgen]
 impl ProbeWebCore {
     pub async fn halt(&self, timeout_ms: u32) -> Result<JsValue, JsValue> {
-        to_js(&self.core.halt(Duration::from_millis(timeout_ms as u64)).await.map_err(client_err)?)
+        to_js(
+            &self
+                .core
+                .halt(Duration::from_millis(timeout_ms as u64))
+                .await
+                .map_err(client_err)?,
+        )
     }
     pub async fn run(&self) -> Result<(), JsValue> {
         self.core.run().await.map_err(client_err)
@@ -572,44 +750,77 @@ impl ProbeWebCore {
     }
     #[wasm_bindgen(js_name = resetAndHalt)]
     pub async fn reset_and_halt(&self, timeout_ms: u32) -> Result<JsValue, JsValue> {
-        to_js(&self.core.reset_and_halt(Duration::from_millis(timeout_ms as u64)).await.map_err(client_err)?)
+        to_js(
+            &self
+                .core
+                .reset_and_halt(Duration::from_millis(timeout_ms as u64))
+                .await
+                .map_err(client_err)?,
+        )
     }
     #[wasm_bindgen(js_name = readMemory8)]
     pub async fn read_memory_8(&self, address: u64, count: u32) -> Result<Vec<u8>, JsValue> {
-        self.core.read_memory_8(address, count as usize).await.map_err(client_err)
+        self.core
+            .read_memory_8(address, count as usize)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = readMemory32)]
     pub async fn read_memory_32(&self, address: u64, count: u32) -> Result<Vec<u32>, JsValue> {
-        self.core.read_memory_32(address, count as usize).await.map_err(client_err)
+        self.core
+            .read_memory_32(address, count as usize)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = writeMemory8)]
     pub async fn write_memory_8(&self, address: u64, data: Vec<u8>) -> Result<(), JsValue> {
-        self.core.write_memory_8(address, data).await.map_err(client_err)
+        self.core
+            .write_memory_8(address, data)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = writeMemory32)]
     pub async fn write_memory_32(&self, address: u64, data: Vec<u32>) -> Result<(), JsValue> {
-        self.core.write_memory_32(address, data).await.map_err(client_err)
+        self.core
+            .write_memory_32(address, data)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = readMemory16)]
     pub async fn read_memory_16(&self, address: u64, count: u32) -> Result<Vec<u16>, JsValue> {
-        self.core.read_memory_16(address, count as usize).await.map_err(client_err)
+        self.core
+            .read_memory_16(address, count as usize)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = readMemory64)]
     pub async fn read_memory_64(&self, address: u64, count: u32) -> Result<Vec<u64>, JsValue> {
-        self.core.read_memory_64(address, count as usize).await.map_err(client_err)
+        self.core
+            .read_memory_64(address, count as usize)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = writeMemory16)]
     pub async fn write_memory_16(&self, address: u64, data: Vec<u16>) -> Result<(), JsValue> {
-        self.core.write_memory_16(address, data).await.map_err(client_err)
+        self.core
+            .write_memory_16(address, data)
+            .await
+            .map_err(client_err)
     }
     #[wasm_bindgen(js_name = writeMemory64)]
     pub async fn write_memory_64(&self, address: u64, data: Vec<u64>) -> Result<(), JsValue> {
-        self.core.write_memory_64(address, data).await.map_err(client_err)
+        self.core
+            .write_memory_64(address, data)
+            .await
+            .map_err(client_err)
     }
     /// Reads up to `count` bytes; stops early (shorter result) at unreadable memory.
     #[wasm_bindgen(js_name = readBytes)]
     pub async fn read_bytes(&self, address: u64, count: u32) -> Result<Vec<u8>, JsValue> {
-        self.core.read_bytes(address, count as usize).await.map_err(client_err)
+        self.core
+            .read_bytes(address, count as usize)
+            .await
+            .map_err(client_err)
     }
 
     /// `ids`: register ids (probe-rs `RegisterId`). Each result carries `Ok` or `Err`.
@@ -622,22 +833,37 @@ impl ProbeWebCore {
     #[wasm_bindgen(js_name = writeRegister)]
     pub async fn write_register(&self, id: u16, value: JsValue) -> Result<(), JsValue> {
         let value: WireRegisterValue = from_js(value)?;
-        self.core.write_core_reg(WireRegisterId(id), value).await.map_err(client_err)
+        self.core
+            .write_core_reg(WireRegisterId(id), value)
+            .await
+            .map_err(client_err)
     }
     /// One result per address (`Ok` or `Err(message)`, e.g. no free comparator).
     #[wasm_bindgen(js_name = setHwBreakpoints)]
     pub async fn set_hw_breakpoints(&self, addresses: Vec<u64>) -> Result<JsValue, JsValue> {
-        to_js(&self.core.set_hw_breakpoints(addresses).await.map_err(client_err)?)
+        to_js(
+            &self
+                .core
+                .set_hw_breakpoints(addresses)
+                .await
+                .map_err(client_err)?,
+        )
     }
     #[wasm_bindgen(js_name = clearHwBreakpoints)]
     pub async fn clear_hw_breakpoints(&self, addresses: Vec<u64>) -> Result<(), JsValue> {
-        self.core.clear_hw_breakpoints(addresses).await.map_err(client_err)
+        self.core
+            .clear_hw_breakpoints(addresses)
+            .await
+            .map_err(client_err)
     }
     /// `condition`: "HardFault" | "CoreReset" | "SecureFault" | "All" | "Svc" | "Hlt".
     #[wasm_bindgen(js_name = enableVectorCatch)]
     pub async fn enable_vector_catch(&self, condition: JsValue) -> Result<(), JsValue> {
         let condition: WireVectorCatchCondition = from_js(condition)?;
-        self.core.enable_vector_catch(condition).await.map_err(client_err)
+        self.core
+            .enable_vector_catch(condition)
+            .await
+            .map_err(client_err)
     }
     pub async fn metadata(&self) -> Result<JsValue, JsValue> {
         to_js(&self.core.metadata().await.map_err(client_err)?)

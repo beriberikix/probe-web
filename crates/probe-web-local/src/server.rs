@@ -1,6 +1,8 @@
 //! The dispatch table and handlers.
 
-use std::{collections::HashMap, convert::Infallible, future::Future, io::Cursor, rc::Rc, time::Duration};
+use std::{
+    collections::HashMap, convert::Infallible, future::Future, io::Cursor, rc::Rc, time::Duration,
+};
 
 use postcard_rpc::{
     header::{VarHeader, VarSeq},
@@ -9,36 +11,60 @@ use postcard_rpc::{
 use probe_rs::{
     MemoryInterface, Permissions,
     config::{Registry, TargetSelector},
-    flashing::{self, BinOptions, DownloadOptions as PrDownloadOptions, ElfOptions, FlashLoader, FlashProgress, Format},
+    flashing::{
+        self, BinOptions, DownloadOptions as PrDownloadOptions, ElfOptions, FlashLoader,
+        FlashProgress, Format,
+    },
     probe::list::Lister,
     rtt::Rtt,
 };
 use probe_rs_rpc::{
-    AttachEndpoint, BootEndpoint, BuildEndpoint, CancelTopic, ChipInfoEndpoint, CoreHaltEndpoint,
-    CoreRunEndpoint, CoreStatusEndpoint, CreateRttClientEndpoint, CreateTempFileEndpoint, ENDPOINT_LIST,
-    EraseAllEndpoint, FlashEndpoint, LoadDebugInfoEndpoint, TakeRichStackTraceEndpoint, ScopesEndpoint, VariablesEndpoint, ClearCoreDebugStateEndpoint, ResolveSourceBreakpointsEndpoint, ResolveSourceLocationsEndpoint, EvaluateEndpoint, SetVariableEndpoint, LoadSvdEndpoint, CoreDumpEndpoint, PollRttUpEndpoint, CleanUpRttEndpoint, HandleSemihostingEndpoint,
-    HaltCoresEndpoint, ResumeCoresEndpoint, CoresStatusEndpoint, CoreStepEndpoint, CoreWriteRegEndpoint, CoreSetHwBpsEndpoint, CoreClearHwBpsEndpoint, CoreEnableVcEndpoint, CoreMetadataEndpoint, CoreReadRegistersEndpoint, GetRttChannelsEndpoint, ListChipFamiliesEndpoint, ListProbesEndpoint,
-    LoadChipFamilyEndpoint, LoadRegionEndpoint, MonitorEndpoint, TargetInfoEndpoint, NewFlashLoaderEndpoint, NoResponse,
-    ProgressEventTopic, ReadBytesEndpoint, ReadMemory8Endpoint, ReadMemory16Endpoint, ReadMemory32Endpoint,
-    ReadMemory64Endpoint, ResetCoreAndHaltEndpoint, ResetCoreEndpoint, RpcError, RpcResult, RttDownEndpoint,
-    RttTopic, SemihostingTopic, Session, TOPICS_IN_LIST, TOPICS_OUT_LIST, TargetMetadataEndpoint, TempFileDataEndpoint,
-    TokioSpawner, VerifyEndpoint, WriteMemory8Endpoint, WriteMemory16Endpoint, WriteMemory32Endpoint,
-    WriteMemory64Endpoint,
-    chip::{Chip, ChipData, ChipFamily, ChipInfoRequest, ChipInfoResponse, JEP106Code, ListFamiliesResponse, LoadChipFamilyRequest},
+    AttachEndpoint, BootEndpoint, BuildEndpoint, CancelTopic, ChipInfoEndpoint, CleanUpRttEndpoint,
+    ClearCoreDebugStateEndpoint, CoreClearHwBpsEndpoint, CoreDumpEndpoint, CoreEnableVcEndpoint,
+    CoreHaltEndpoint, CoreMetadataEndpoint, CoreReadRegistersEndpoint, CoreRunEndpoint,
+    CoreSetHwBpsEndpoint, CoreStatusEndpoint, CoreStepEndpoint, CoreWriteRegEndpoint,
+    CoresStatusEndpoint, CreateRttClientEndpoint, CreateTempFileEndpoint, ENDPOINT_LIST,
+    EraseAllEndpoint, EvaluateEndpoint, FlashEndpoint, GetRttChannelsEndpoint, HaltCoresEndpoint,
+    HandleSemihostingEndpoint, ListChipFamiliesEndpoint, ListProbesEndpoint,
+    LoadChipFamilyEndpoint, LoadDebugInfoEndpoint, LoadRegionEndpoint, LoadSvdEndpoint,
+    MonitorEndpoint, NewFlashLoaderEndpoint, NoResponse, PollRttUpEndpoint, ProgressEventTopic,
+    ReadBytesEndpoint, ReadMemory8Endpoint, ReadMemory16Endpoint, ReadMemory32Endpoint,
+    ReadMemory64Endpoint, ResetCoreAndHaltEndpoint, ResetCoreEndpoint,
+    ResolveSourceBreakpointsEndpoint, ResolveSourceLocationsEndpoint, ResumeCoresEndpoint,
+    RpcError, RpcResult, RttDownEndpoint, RttTopic, ScopesEndpoint, SemihostingTopic, Session,
+    SetVariableEndpoint, TOPICS_IN_LIST, TOPICS_OUT_LIST, TakeRichStackTraceEndpoint,
+    TargetInfoEndpoint, TargetMetadataEndpoint, TempFileDataEndpoint, TokioSpawner,
+    VariablesEndpoint, VerifyEndpoint, WriteMemory8Endpoint, WriteMemory16Endpoint,
+    WriteMemory32Endpoint, WriteMemory64Endpoint,
+    chip::{
+        Chip, ChipData, ChipFamily, ChipInfoRequest, ChipInfoResponse, JEP106Code,
+        ListFamiliesResponse, LoadChipFamilyRequest,
+    },
     core_ops::{CoreAccessRequest, CoreHaltRequest, WireCoreInformation, WireCoreStatus},
     file::{AppendFileRequest, CreateFileResponse, TempFile},
     flash::{
-        BootInfo, BootRequest, BuildRequest, BuildResponse, BuildResult, EraseAllRequest, FlashRequest,
-        LoadRegionRequest, NewFlashLoaderRequest, NewFlashLoaderResponse, ProgressEvent, VerifyRequest,
-        VerifyResponse, VerifyResult,
+        BootInfo, BootRequest, BuildRequest, BuildResponse, BuildResult, EraseAllRequest,
+        FlashRequest, LoadRegionRequest, NewFlashLoaderRequest, NewFlashLoaderResponse,
+        ProgressEvent, VerifyRequest, VerifyResponse, VerifyResult,
     },
     format::FormatKind,
-    info::{TargetMetadataRequest, TargetMetadataResponse, WireSessionCore, WireSessionTargetMetadata},
+    info::{
+        TargetMetadataRequest, TargetMetadataResponse, WireSessionCore, WireSessionTargetMetadata,
+    },
     memory::{ReadBytesRequest, ReadMemoryRequest, WriteMemoryRequest},
-    monitor::{ChannelInfo, MonitorExitReason, MonitorMode, MonitorRequest, MonitorResponse, RttEvent},
-    probe::{AttachRequest, AttachResponse, AttachResult, DebugProbeEntry, ListProbesResponse, WireProtocol},
+    monitor::{
+        ChannelInfo, MonitorExitReason, MonitorMode, MonitorRequest, MonitorResponse, RttEvent,
+    },
+    probe::{
+        AttachRequest, AttachResponse, AttachResult, DebugProbeEntry, ListProbesResponse,
+        WireProtocol,
+    },
     reset::{ResetCoreAndHaltRequest, ResetCoreRequest},
-    rtt_client::{PollRttUpRequest, PollRttUpResponse, RttPollResult, CreateRttClientRequest, CreateRttClientResponse, RttChannelMeta, RttChannelRequest, RttChannels, RttChannelsResponse, RttClientData, RttDownRequest, RttDownResponse},
+    rtt_client::{
+        CreateRttClientRequest, CreateRttClientResponse, PollRttUpRequest, PollRttUpResponse,
+        RttChannelMeta, RttChannelRequest, RttChannels, RttChannelsResponse, RttClientData,
+        RttDownRequest, RttDownResponse, RttPollResult,
+    },
     rtt_config::{ChannelMode, RttChannelConfig},
     transport::memory::WireTx,
 };
@@ -48,12 +74,13 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     convert,
     core_ops::{
-        core_clear_hw_bps, core_dump, core_enable_vc, handle_semihosting, core_metadata, core_read_registers, core_set_hw_bps, core_step,
-        core_write_reg, cores_status, halt_cores, resume_cores,
+        core_clear_hw_bps, core_dump, core_enable_vc, core_metadata, core_read_registers,
+        core_set_hw_bps, core_step, core_write_reg, cores_status, halt_cores, handle_semihosting,
+        resume_cores,
     },
     debug_state::{
-        clear_core, evaluate, load_debug_info, load_svd, resolve_source_breakpoints, set_variable, resolve_source_locations, scopes, take_rich_stack_trace,
-        variables,
+        clear_core, evaluate, load_debug_info, load_svd, resolve_source_breakpoints,
+        resolve_source_locations, scopes, set_variable, take_rich_stack_trace, variables,
     },
     log,
 };
@@ -62,14 +89,6 @@ pub type WireTxImpl = WireTx<Sender<Vec<u8>>>;
 
 pub(crate) fn err<E: std::fmt::Display>(e: E) -> RpcError {
     RpcError::from(e.to_string())
-}
-
-/// Like [`err`], but keeps the error's `Debug` form when it says more than
-/// `Display` does: probe-rs wraps driver errors in opaque variants
-/// ("An error which is specific to the debug probe in use occurred"), and in
-/// the browser there is no second place to look for the cause.
-pub(crate) fn err_detailed<E: std::fmt::Display + std::fmt::Debug>(e: E) -> RpcError {
-    RpcError::from(detail(e))
 }
 
 /// The error's message, plus its `Debug` form when that says more.
@@ -148,12 +167,20 @@ impl SpawnContext for Ctx {
 }
 
 impl Inner {
-    pub(crate) fn session(&mut self, key: probe_rs_rpc::Key<Session>) -> RpcResult<&mut probe_rs::Session> {
-        self.sessions.get_mut(&key.id()).ok_or_else(|| err("unknown session"))
+    pub(crate) fn session(
+        &mut self,
+        key: probe_rs_rpc::Key<Session>,
+    ) -> RpcResult<&mut probe_rs::Session> {
+        self.sessions
+            .get_mut(&key.id())
+            .ok_or_else(|| err("unknown session"))
     }
 }
 
-pub fn spawn_fn(_sp: &TokioSpawner, fut: impl Future<Output = ()> + 'static) -> Result<(), Infallible> {
+pub fn spawn_fn(
+    _sp: &TokioSpawner,
+    fut: impl Future<Output = ()> + 'static,
+) -> Result<(), Infallible> {
     wasm_bindgen_futures::spawn_local(fut);
     Ok(())
 }
@@ -171,7 +198,9 @@ fn progress_pump(ctx: &Ctx) -> (FlashProgress<'static>, impl Future<Output = ()>
     let sender = ctx.sender();
     let pump = async move {
         while let Some(e) = rx.recv().await {
-            let _ = sender.publish::<ProgressEventTopic>(VarSeq::Seq2(0), &e).await;
+            let _ = sender
+                .publish::<ProgressEventTopic>(VarSeq::Seq2(0), &e)
+                .await;
         }
     };
     (progress, pump)
@@ -195,19 +224,22 @@ async fn list_probes(_ctx: &mut Ctx, _h: VarHeader, _r: ()) -> ListProbesRespons
     });
     #[cfg(not(feature = "fake"))]
     let fake = std::iter::empty();
-    Ok(fake.chain(Lister::new()
-        .list_all()
-        .await
-        .iter()
-        .map(|p| DebugProbeEntry {
-            identifier: p.identifier.clone(),
-            vendor_id: p.vendor_id,
-            product_id: p.product_id,
-            interface: p.hid_interface,
-            serial_number: p.serial_number.clone().unwrap_or_default(),
-            probe_type: p.identifier.clone(),
-            inaccessible: false,
-        }))
+    Ok(fake
+        .chain(
+            Lister::new()
+                .list_all()
+                .await
+                .iter()
+                .map(|p| DebugProbeEntry {
+                    identifier: p.identifier.clone(),
+                    vendor_id: p.vendor_id,
+                    product_id: p.product_id,
+                    interface: p.hid_interface,
+                    serial_number: p.serial_number.clone().unwrap_or_default(),
+                    probe_type: p.identifier.clone(),
+                    inaccessible: false,
+                }),
+        )
         .collect())
 }
 
@@ -219,7 +251,12 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
         ));
         let selector = match req.chip {
             Some(c) => TargetSelector::Unspecified(c),
-            None => return Ok(AttachResult::TargetAttachFailed { message: "the fake probe needs an explicit chip".into(), connect_under_reset: false }),
+            None => {
+                return Ok(AttachResult::TargetAttachFailed {
+                    message: "the fake probe needs an explicit chip".into(),
+                    connect_under_reset: false,
+                });
+            }
         };
         return match probe.attach(selector, Permissions::default()).await {
             Ok(session) => {
@@ -227,7 +264,10 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
                 ctx.inner.lock().await.sessions.insert(key.id(), session);
                 Ok(AttachResult::Success(key))
             }
-            Err(e) => Ok(AttachResult::TargetAttachFailed { message: detail(e), connect_under_reset: false }),
+            Err(e) => Ok(AttachResult::TargetAttachFailed {
+                message: detail(e),
+                connect_under_reset: false,
+            }),
         };
     }
     let probes = Lister::new().list_all().await;
@@ -272,7 +312,9 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
             permissions = permissions.allow_erase_all();
         }
         let attach = if req.connect_under_reset {
-            probe.attach_under_reset(selector.clone(), permissions).await
+            probe
+                .attach_under_reset(selector.clone(), permissions)
+                .await
         } else {
             probe.attach(selector.clone(), permissions).await
         };
@@ -300,10 +342,10 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
     // armed breakpoint makes the next flash fail (the flash algorithm runs on the core), so start
     // every session without any.
     for (index, _) in session.list_cores() {
-        if let Ok(mut core) = session.core(index).await {
-            if let Err(e) = core.clear_all_hw_breakpoints().await {
-                tracing::debug!("could not clear hardware breakpoints on core {index}: {e}");
-            }
+        if let Ok(mut core) = session.core(index).await
+            && let Err(e) = core.clear_all_hw_breakpoints().await
+        {
+            tracing::debug!("could not clear hardware breakpoints on core {index}: {e}");
         }
     }
     let key = probe_rs_rpc::Key::<Session>::new();
@@ -324,7 +366,13 @@ async fn list_families(ctx: &mut Ctx, _h: VarHeader, _r: ()) -> ListFamiliesResp
         .map(|f| ChipFamily {
             name: f.name.clone(),
             manufacturer: f.manufacturer.map(|m| JEP106Code { id: m.id, cc: m.cc }),
-            variants: f.variants.iter().map(|v| Chip { name: v.name.clone() }).collect(),
+            variants: f
+                .variants
+                .iter()
+                .map(|v| Chip {
+                    name: v.name.clone(),
+                })
+                .collect(),
         })
         .collect())
 }
@@ -336,9 +384,17 @@ async fn chip_info(ctx: &mut Ctx, _h: VarHeader, req: ChipInfoRequest) -> ChipIn
         cores: target
             .cores
             .iter()
-            .map(|c| probe_rs_rpc::chip::Core { name: c.name.clone(), core_type: convert::chip_core_type(c.core_type) })
+            .map(|c| probe_rs_rpc::chip::Core {
+                name: c.name.clone(),
+                core_type: convert::chip_core_type(c.core_type),
+            })
             .collect(),
-        memory_map: target.memory_map.iter().cloned().map(convert::memory_region).collect(),
+        memory_map: target
+            .memory_map
+            .iter()
+            .cloned()
+            .map(convert::memory_region)
+            .collect(),
     })
 }
 
@@ -361,7 +417,9 @@ async fn create_temp_file(ctx: &mut Ctx, _h: VarHeader, _r: ()) -> CreateFileRes
     inner.files.insert(path.clone(), Vec::new());
     let key = probe_rs_rpc::Key::<probe_rs_rpc::TempFileHandle>::new();
     // Map the handle to the path so appends can find the buffer.
-    inner.files.insert(format!("/key/{}", key.id()), path.clone().into_bytes());
+    inner
+        .files
+        .insert(format!("/key/{}", key.id()), path.clone().into_bytes());
     Ok(TempFile { key, path })
 }
 
@@ -372,13 +430,21 @@ async fn append_temp_file(ctx: &mut Ctx, _h: VarHeader, req: AppendFileRequest) 
         .get(&format!("/key/{}", req.key.id()))
         .map(|p| String::from_utf8_lossy(p).into_owned())
         .ok_or_else(|| err("unknown temp file"))?;
-    inner.files.get_mut(&path).ok_or_else(|| err("unknown temp file"))?.extend_from_slice(&req.data);
+    inner
+        .files
+        .get_mut(&path)
+        .ok_or_else(|| err("unknown temp file"))?
+        .extend_from_slice(&req.data);
     Ok(())
 }
 
 // ---------------------------------------------------------------- flash
 
-async fn new_flash_loader(ctx: &mut Ctx, _h: VarHeader, req: NewFlashLoaderRequest) -> NewFlashLoaderResponse {
+async fn new_flash_loader(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: NewFlashLoaderRequest,
+) -> NewFlashLoaderResponse {
     let mut inner = ctx.inner.lock().await;
     let session = inner.session(req.sessid)?;
     let loader = session.target().flash_loader();
@@ -389,7 +455,10 @@ async fn new_flash_loader(ctx: &mut Ctx, _h: VarHeader, req: NewFlashLoaderReque
 
 async fn load_region(ctx: &mut Ctx, _h: VarHeader, req: LoadRegionRequest) -> NoResponse {
     let mut inner = ctx.inner.lock().await;
-    let loader = inner.loaders.get_mut(&req.loader.id()).ok_or_else(|| err("unknown loader"))?;
+    let loader = inner
+        .loaders
+        .get_mut(&req.loader.id())
+        .ok_or_else(|| err("unknown loader"))?;
     loader.add_data(req.address, &req.data).map_err(err)?;
     Ok(())
 }
@@ -401,7 +470,9 @@ fn format_for(kind: FormatKind, default: Option<&str>, req: &BuildRequest) -> Rp
             skip: req.format.bin_options.skip,
         }),
         FormatKind::Hex => Format::Hex,
-        FormatKind::Elf => Format::Elf(ElfOptions { skip_sections: req.format.elf_options.skip_section.clone() }),
+        FormatKind::Elf => Format::Elf(ElfOptions {
+            skip_sections: req.format.elf_options.skip_section.clone(),
+        }),
         FormatKind::Uf2 => Format::Uf2,
         FormatKind::Idf => Format::Idf(Default::default()),
         FormatKind::Target => unreachable!(),
@@ -410,7 +481,11 @@ fn format_for(kind: FormatKind, default: Option<&str>, req: &BuildRequest) -> Rp
 
 async fn build(ctx: &mut Ctx, _h: VarHeader, req: BuildRequest) -> BuildResponse {
     let mut inner = ctx.inner.lock().await;
-    let bytes = inner.files.get(&req.path).cloned().ok_or_else(|| err(format!("no uploaded file {}", req.path)))?;
+    let bytes = inner
+        .files
+        .get(&req.path)
+        .cloned()
+        .ok_or_else(|| err(format!("no uploaded file {}", req.path)))?;
     let keep_cb;
     let (loader, boot) = {
         let session = inner.session(req.sessid)?;
@@ -426,23 +501,29 @@ async fn build(ctx: &mut Ctx, _h: VarHeader, req: BuildRequest) -> BuildResponse
         keep_cb = loader.has_data_for_address(0);
         (loader, boot)
     };
-    if let Some(rtt) = req.rtt_client {
-        if let Some(cfg) = inner.rtt.get_mut(&rtt.id()) {
-            cfg.keep_control_block = keep_cb;
-            // A new image can move the control block.
-            cfg.found_at = None;
-        }
+    if let Some(rtt) = req.rtt_client
+        && let Some(cfg) = inner.rtt.get_mut(&rtt.id())
+    {
+        cfg.keep_control_block = keep_cb;
+        // A new image can move the control block.
+        cfg.found_at = None;
     }
     let key = probe_rs_rpc::Key::<probe_rs_rpc::FlashLoader>::new();
     inner.loaders.insert(key.id(), loader);
-    Ok(BuildResult { loader: key, boot_info: convert::boot_info(boot) })
+    Ok(BuildResult {
+        loader: key,
+        boot_info: convert::boot_info(boot),
+    })
 }
 
 async fn flash(ctx: &mut Ctx, _h: VarHeader, req: FlashRequest) -> NoResponse {
     let (progress, pump) = progress_pump(ctx);
     wasm_bindgen_futures::spawn_local(pump);
     let mut inner = ctx.inner.lock().await;
-    let loader = inner.loaders.remove(&req.loader.id()).ok_or_else(|| err("unknown loader"))?;
+    let loader = inner
+        .loaders
+        .remove(&req.loader.id())
+        .ok_or_else(|| err("unknown loader"))?;
     let session = inner.session(req.sessid)?;
     let mut options = PrDownloadOptions::new();
     options.progress = Some(progress);
@@ -460,7 +541,10 @@ async fn verify(ctx: &mut Ctx, _h: VarHeader, req: VerifyRequest) -> VerifyRespo
     wasm_bindgen_futures::spawn_local(pump);
     let mut inner = ctx.inner.lock().await;
     // The loader is kept for a subsequent `flash` of the same image.
-    let loader = inner.loaders.remove(&req.loader.id()).ok_or_else(|| err("unknown loader"))?;
+    let loader = inner
+        .loaders
+        .remove(&req.loader.id())
+        .ok_or_else(|| err("unknown loader"))?;
     let result = {
         let session = inner.session(req.sessid)?;
         loader.verify(session, progress).await
@@ -484,14 +568,25 @@ async fn erase_all(ctx: &mut Ctx, _h: VarHeader, req: EraseAllRequest) -> NoResp
 
 /// Mirror `probe-rs serve`: leave the core halted at the reset vector so RTT
 /// can attach deterministically; the caller resumes it.
-async fn prepare_boot(session: &mut probe_rs::Session, boot: &BootInfo, core_id: usize) -> RpcResult<()> {
+async fn prepare_boot(
+    session: &mut probe_rs::Session,
+    boot: &BootInfo,
+    core_id: usize,
+) -> RpcResult<()> {
     match boot {
         BootInfo::Other => {
             let mut core = session.core(core_id).await.map_err(err)?;
-            core.reset_and_halt(Duration::from_millis(500)).await.map_err(err)?;
+            core.reset_and_halt(Duration::from_millis(500))
+                .await
+                .map_err(err)?;
         }
-        BootInfo::FromRam { vector_table_addr, .. } => {
-            session.prepare_running_on_ram(*vector_table_addr).await.map_err(err)?;
+        BootInfo::FromRam {
+            vector_table_addr, ..
+        } => {
+            session
+                .prepare_running_on_ram(*vector_table_addr)
+                .await
+                .map_err(err)?;
         }
     }
     Ok(())
@@ -509,7 +604,11 @@ async fn boot(ctx: &mut Ctx, _h: VarHeader, req: BootRequest) -> NoResponse {
 
 // ---------------------------------------------------------------- RTT + monitor
 
-async fn create_rtt_client(ctx: &mut Ctx, _h: VarHeader, req: CreateRttClientRequest) -> CreateRttClientResponse {
+async fn create_rtt_client(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: CreateRttClientRequest,
+) -> CreateRttClientResponse {
     let mut inner = ctx.inner.lock().await;
     let key = probe_rs_rpc::Key::<probe_rs_rpc::RttClient>::new();
     inner.rtt.insert(
@@ -523,7 +622,10 @@ async fn create_rtt_client(ctx: &mut Ctx, _h: VarHeader, req: CreateRttClientReq
             live: None,
         },
     );
-    Ok(RttClientData { handle: key, core_id: 0 })
+    Ok(RttClientData {
+        handle: key,
+        core_id: 0,
+    })
 }
 
 fn channel_mode(m: ChannelMode) -> probe_rs::rtt::ChannelMode {
@@ -545,13 +647,19 @@ impl LiveRtt {
             .rtt
             .up_channels()
             .iter()
-            .map(|c| ChannelInfo { name: c.name().unwrap_or("").to_string(), buffer_size: c.buffer_size() as u64 })
+            .map(|c| ChannelInfo {
+                name: c.name().unwrap_or("").to_string(),
+                buffer_size: c.buffer_size() as u64,
+            })
             .collect();
         let down = self
             .rtt
             .down_channels()
             .iter()
-            .map(|c| ChannelInfo { name: c.name().unwrap_or("").to_string(), buffer_size: c.buffer_size() as u64 })
+            .map(|c| ChannelInfo {
+                name: c.name().unwrap_or("").to_string(),
+                buffer_size: c.buffer_size() as u64,
+            })
             .collect();
         (up, down)
     }
@@ -559,25 +667,51 @@ impl LiveRtt {
 
 /// Attach RTT for `rtt_client`: at the cached control-block address when known
 /// (falling back to a scan if the block moved), else by scanning the region.
-async fn attach_rtt(core: &mut probe_rs::Core<'_>, region: &probe_rs::rtt::ScanRegion, found_at: Option<u64>) -> Result<Rtt, RpcError> {
-    if let Some(ptr) = found_at {
-        if let Ok(rtt) = Rtt::attach_at(core, ptr).await {
-            return Ok(rtt);
-        }
+async fn attach_rtt(
+    core: &mut probe_rs::Core<'_>,
+    region: &probe_rs::rtt::ScanRegion,
+    found_at: Option<u64>,
+) -> Result<Rtt, RpcError> {
+    if let Some(ptr) = found_at
+        && let Ok(rtt) = Rtt::attach_at(core, ptr).await
+    {
+        return Ok(rtt);
     }
     Rtt::attach_region(core, region).await.map_err(err)
 }
 
-async fn get_rtt_channels(ctx: &mut Ctx, _h: VarHeader, req: RttChannelRequest) -> RttChannelsResponse {
+async fn get_rtt_channels(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: RttChannelRequest,
+) -> RttChannelsResponse {
     let mut inner = ctx.inner.lock().await;
-    let (cfg_region, found_at) = inner.rtt.get(&req.rtt_client.id()).map(|c| (c.scan_region.clone(), c.found_at)).ok_or_else(|| err("unknown rtt client"))?;
+    let (cfg_region, found_at) = inner
+        .rtt
+        .get(&req.rtt_client.id())
+        .map(|c| (c.scan_region.clone(), c.found_at))
+        .ok_or_else(|| err("unknown rtt client"))?;
     let (channels, ptr) = {
         let session = inner.session(req.sessid)?;
         let mut core = session.core(0).await.map_err(err)?;
         let mut rtt = attach_rtt(&mut core, &cfg_region, found_at).await?;
         let channels = RttChannels {
-            up: rtt.up_channels().iter().map(|c| RttChannelMeta { number: c.number() as u32, name: c.name().unwrap_or("").into() }).collect(),
-            down: rtt.down_channels().iter().map(|c| RttChannelMeta { number: c.number() as u32, name: c.name().unwrap_or("").into() }).collect(),
+            up: rtt
+                .up_channels()
+                .iter()
+                .map(|c| RttChannelMeta {
+                    number: c.number() as u32,
+                    name: c.name().unwrap_or("").into(),
+                })
+                .collect(),
+            down: rtt
+                .down_channels()
+                .iter()
+                .map(|c| RttChannelMeta {
+                    number: c.number() as u32,
+                    name: c.name().unwrap_or("").into(),
+                })
+                .collect(),
         };
         (channels, rtt.ptr())
     };
@@ -589,13 +723,19 @@ async fn get_rtt_channels(ctx: &mut Ctx, _h: VarHeader, req: RttChannelRequest) 
 
 async fn write_rtt_down(ctx: &mut Ctx, _h: VarHeader, req: RttDownRequest) -> RttDownResponse {
     let mut inner = ctx.inner.lock().await;
-    let (region, found_at) = inner.rtt.get(&req.rtt_client.id()).map(|c| (c.scan_region.clone(), c.found_at)).ok_or_else(|| err("unknown rtt client"))?;
+    let (region, found_at) = inner
+        .rtt
+        .get(&req.rtt_client.id())
+        .map(|c| (c.scan_region.clone(), c.found_at))
+        .ok_or_else(|| err("unknown rtt client"))?;
     let (n, ptr) = {
         let session = inner.session(req.sessid)?;
         let mut core = session.core(0).await.map_err(err)?;
         let mut rtt = attach_rtt(&mut core, &region, found_at).await?;
         let ptr = rtt.ptr();
-        let ch = rtt.down_channel(req.channel as usize).ok_or_else(|| err("no such down channel"))?;
+        let ch = rtt
+            .down_channel(req.channel as usize)
+            .ok_or_else(|| err("no such down channel"))?;
         (ch.write(&mut core, &req.data).await.map_err(err)?, ptr)
     };
     if let Some(cfg) = inner.rtt.get_mut(&req.rtt_client.id()) {
@@ -609,8 +749,14 @@ async fn write_rtt_down(ctx: &mut Ctx, _h: VarHeader, req: RttDownRequest) -> Rt
 async fn poll_rtt_up(ctx: &mut Ctx, _h: VarHeader, req: PollRttUpRequest) -> PollRttUpResponse {
     let mut guard = ctx.inner.lock().await;
     let inner = &mut *guard;
-    let cfg = inner.rtt.get_mut(&req.rtt_client.id()).ok_or_else(|| err("unknown rtt client"))?;
-    let session = inner.sessions.get_mut(&req.sessid.id()).ok_or_else(|| err("unknown session"))?;
+    let cfg = inner
+        .rtt
+        .get_mut(&req.rtt_client.id())
+        .ok_or_else(|| err("unknown rtt client"))?;
+    let session = inner
+        .sessions
+        .get_mut(&req.sessid.id())
+        .ok_or_else(|| err("unknown session"))?;
     let mut core = session.core(0).await.map_err(err)?;
     if cfg.live.is_none() {
         match attach_rtt(&mut core, &cfg.scan_region, cfg.found_at).await {
@@ -619,7 +765,14 @@ async fn poll_rtt_up(ctx: &mut Ctx, _h: VarHeader, req: PollRttUpRequest) -> Pol
                 cfg.live = Some(rtt);
             }
             Err(_) => {
-                return Ok(req.channels.into_iter().map(|channel| RttPollResult { channel, result: Ok(Vec::new()) }).collect());
+                return Ok(req
+                    .channels
+                    .into_iter()
+                    .map(|channel| RttPollResult {
+                        channel,
+                        result: Ok(Vec::new()),
+                    })
+                    .collect());
             }
         }
     }
@@ -670,12 +823,22 @@ async fn clean_up_rtt(ctx: &mut Ctx, _h: VarHeader, req: RttChannelRequest) -> N
 /// The run loop: boot (or attach), then poll the core status and RTT until
 /// cancelled, the core halts, or the connection drops.
 /// `info`: open the probe (no target attach) and stream DP/AP/ROM-table findings.
-async fn target_info(_ctx: Ctx, header: VarHeader, req: probe_rs_rpc::info::TargetInfoRequest, sender: PostcardSender<WireTxImpl>) {
+async fn target_info(
+    _ctx: Ctx,
+    header: VarHeader,
+    req: probe_rs_rpc::info::TargetInfoRequest,
+    sender: PostcardSender<WireTxImpl>,
+) {
     let result = target_info_impl(&req, &sender).await;
-    let _ = sender.reply::<TargetInfoEndpoint>(header.seq_no, &result).await;
+    let _ = sender
+        .reply::<TargetInfoEndpoint>(header.seq_no, &result)
+        .await;
 }
 
-async fn target_info_impl(req: &probe_rs_rpc::info::TargetInfoRequest, sender: &PostcardSender<WireTxImpl>) -> NoResponse {
+async fn target_info_impl(
+    req: &probe_rs_rpc::info::TargetInfoRequest,
+    sender: &PostcardSender<WireTxImpl>,
+) -> NoResponse {
     // Test hook (fake build only): a scan of probe ffff:fffe panics, so browser tests
     // can check that a crashed worker fails in-flight calls instead of hanging them.
     #[cfg(feature = "fake")]
@@ -691,7 +854,9 @@ async fn target_info_impl(req: &probe_rs_rpc::info::TargetInfoRequest, sender: &
         // scan reports that as an event instead of panicking the worker.
         #[cfg(feature = "fake")]
         {
-            probe_rs::probe::Probe::from_specific_probe(Box::new(probe_rs::integration::FakeProbe::with_mocked_core()))
+            probe_rs::probe::Probe::from_specific_probe(Box::new(
+                probe_rs::integration::FakeProbe::with_mocked_core(),
+            ))
         }
         #[cfg(not(feature = "fake"))]
         unreachable!("fake is false without the feature")
@@ -702,7 +867,8 @@ async fn target_info_impl(req: &probe_rs_rpc::info::TargetInfoRequest, sender: &
             .find(|p| {
                 p.vendor_id == req.probe.vendor_id
                     && p.product_id == req.probe.product_id
-                    && (req.probe.serial_number.is_empty() || p.serial_number.as_deref() == Some(req.probe.serial_number.as_str()))
+                    && (req.probe.serial_number.is_empty()
+                        || p.serial_number.as_deref() == Some(req.probe.serial_number.as_str()))
             })
             .ok_or_else(|| err("probe not found"))?;
         info.open().await.map_err(err)?
@@ -711,15 +877,29 @@ async fn target_info_impl(req: &probe_rs_rpc::info::TargetInfoRequest, sender: &
         let _ = probe.set_speed(speed).await;
     }
     let mut ictx = crate::info::InfoCtx { sender };
-    crate::info::show_info(&mut ictx, probe, &req.scan_chain, req.protocol, req.connect_under_reset, req.target_sel)
-        .await
-        .map_err(err)?;
+    crate::info::show_info(
+        &mut ictx,
+        probe,
+        &req.scan_chain,
+        req.protocol,
+        req.connect_under_reset,
+        req.target_sel,
+    )
+    .await
+    .map_err(err)?;
     Ok(())
 }
 
-async fn monitor(ctx: Ctx, header: VarHeader, req: MonitorRequest, sender: PostcardSender<WireTxImpl>) {
+async fn monitor(
+    ctx: Ctx,
+    header: VarHeader,
+    req: MonitorRequest,
+    sender: PostcardSender<WireTxImpl>,
+) {
     let result = monitor_impl(&ctx, &req, &sender).await;
-    let _ = sender.reply::<MonitorEndpoint>(header.seq_no, &result).await;
+    let _ = sender
+        .reply::<MonitorEndpoint>(header.seq_no, &result)
+        .await;
 }
 
 /// The page stopped listening (tab closed, client dropped): end the monitor.
@@ -728,12 +908,24 @@ fn client_gone() -> MonitorExitReason {
     MonitorExitReason::UserExit
 }
 
-async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<WireTxImpl>) -> MonitorResponse {
+async fn monitor_impl(
+    ctx: &Ctx,
+    req: &MonitorRequest,
+    sender: &PostcardSender<WireTxImpl>,
+) -> MonitorResponse {
     // Fresh token per monitor run; `cancel` cancels the current one.
     *ctx.cancel.borrow_mut() = CancellationToken::new();
     let token = ctx.cancel.borrow().clone();
 
-    let (scan_region, keep_cb, found_at, modes): (Option<probe_rs::rtt::ScanRegion>, bool, Option<u64>, Vec<(u32, Option<ChannelMode>)>) = {
+    /// The parts of an RTT client's configuration this poll needs, copied out so the lock on
+    /// `Inner` can be released before talking to the target.
+    type RttPollConfig = (
+        Option<probe_rs::rtt::ScanRegion>,
+        bool,
+        Option<u64>,
+        Vec<(u32, Option<ChannelMode>)>,
+    );
+    let (scan_region, keep_cb, found_at, modes): RttPollConfig = {
         let inner = ctx.inner.lock().await;
         match req.options.rtt_client.and_then(|k| inner.rtt.get(&k.id())) {
             Some(cfg) => {
@@ -743,7 +935,12 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                     .filter_map(|c| c.channel_number.map(|n| (n, c.mode)))
                     .collect();
                 modes.push((u32::MAX, cfg.default.mode));
-                (Some(cfg.scan_region.clone()), cfg.keep_control_block, cfg.found_at, modes)
+                (
+                    Some(cfg.scan_region.clone()),
+                    cfg.keep_control_block,
+                    cfg.found_at,
+                    modes,
+                )
             }
             None => (None, false, None, vec![]),
         }
@@ -781,42 +978,53 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
             let mut core = session.core(0).await.map_err(err)?;
 
             // Try to attach RTT (retry for a few seconds after boot).
-            if live.is_none() {
-                if let Some(region) = &scan_region {
-                    let due = last_rtt_attempt.map(|t| t.elapsed() >= Duration::from_millis(200)).unwrap_or(true);
-                    if due && started.elapsed() < Duration::from_secs(10) {
-                        last_rtt_attempt = Some(web_time::Instant::now());
-                        let attempt = attach_rtt(&mut core, region, found_at).await;
-                        if let Ok(mut rtt) = attempt {
-                            log(&format!("RTT attached after {:?}", started.elapsed()));
-                            learned_ptr = Some(rtt.ptr());
-                            for (n, mode) in &modes {
-                                if let Some(mode) = mode {
-                                    let targets: Vec<usize> = if *n == u32::MAX {
-                                        (0..rtt.up_channels().len()).collect()
-                                    } else {
-                                        vec![*n as usize]
-                                    };
-                                    for i in targets {
-                                        if let Some(ch) = rtt.up_channel(i) {
-                                            if let Err(e) = ch.set_mode(&mut core, channel_mode(*mode)).await {
-                                                log(&format!("RTT: could not set the mode of up channel {i}: {e}"));
-                                            }
-                                        }
+            if live.is_none()
+                && let Some(region) = &scan_region
+            {
+                let due = last_rtt_attempt
+                    .map(|t| t.elapsed() >= Duration::from_millis(200))
+                    .unwrap_or(true);
+                if due && started.elapsed() < Duration::from_secs(10) {
+                    last_rtt_attempt = Some(web_time::Instant::now());
+                    let attempt = attach_rtt(&mut core, region, found_at).await;
+                    if let Ok(mut rtt) = attempt {
+                        log(&format!("RTT attached after {:?}", started.elapsed()));
+                        learned_ptr = Some(rtt.ptr());
+                        for (n, mode) in &modes {
+                            if let Some(mode) = mode {
+                                let targets: Vec<usize> = if *n == u32::MAX {
+                                    (0..rtt.up_channels().len()).collect()
+                                } else {
+                                    vec![*n as usize]
+                                };
+                                for i in targets {
+                                    if let Some(ch) = rtt.up_channel(i)
+                                        && let Err(e) =
+                                            ch.set_mode(&mut core, channel_mode(*mode)).await
+                                    {
+                                        log(&format!(
+                                            "RTT: could not set the mode of up channel {i}: {e}"
+                                        ));
                                     }
                                 }
                             }
-                            let mut l = LiveRtt { rtt };
-                            let (up, down) = l.info();
-                            if sender
-                                .publish::<RttTopic>(VarSeq::Seq2(0), &RttEvent::Discovered { up_channels: up, down_channels: down })
-                                .await
-                                .is_err()
-                            {
-                                return Ok(client_gone());
-                            }
-                            live = Some(l);
                         }
+                        let mut l = LiveRtt { rtt };
+                        let (up, down) = l.info();
+                        if sender
+                            .publish::<RttTopic>(
+                                VarSeq::Seq2(0),
+                                &RttEvent::Discovered {
+                                    up_channels: up,
+                                    down_channels: down,
+                                },
+                            )
+                            .await
+                            .is_err()
+                        {
+                            return Ok(client_gone());
+                        }
+                        live = Some(l);
                     }
                 }
             }
@@ -830,7 +1038,13 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                         Ok(n) if n > 0 => {
                             any = true;
                             if sender
-                                .publish::<RttTopic>(VarSeq::Seq2(0), &RttEvent::Output { channel: i as u32, bytes: buf[..n].to_vec() })
+                                .publish::<RttTopic>(
+                                    VarSeq::Seq2(0),
+                                    &RttEvent::Output {
+                                        channel: i as u32,
+                                        bytes: buf[..n].to_vec(),
+                                    },
+                                )
                                 .await
                                 .is_err()
                             {
@@ -855,31 +1069,37 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                 }
             }
             let status = core.status().await.map_err(err)?;
-            if let probe_rs::CoreStatus::Halted(reason) = status {
-                if !needs_resume {
-                    let probe_rs::HaltReason::Breakpoint(probe_rs::BreakpointCause::Semihosting(cmd)) = reason else {
-                        return Ok(MonitorExitReason::Halted(convert::halt_reason(reason)));
-                    };
-                    match semihosting.handle(cmd, &mut core).await.map_err(err)? {
-                        crate::semihosting::Outcome::Exit(exit) => return Ok(exit),
-                        crate::semihosting::Outcome::Continue(events) => {
-                            for ev in &events {
-                                if sender.publish::<SemihostingTopic>(VarSeq::Seq2(0), ev).await.is_err() {
-                                    return Ok(client_gone());
-                                }
+            if let probe_rs::CoreStatus::Halted(reason) = status
+                && !needs_resume
+            {
+                let probe_rs::HaltReason::Breakpoint(probe_rs::BreakpointCause::Semihosting(cmd)) =
+                    reason
+                else {
+                    return Ok(MonitorExitReason::Halted(convert::halt_reason(reason)));
+                };
+                match semihosting.handle(cmd, &mut core).await.map_err(err)? {
+                    crate::semihosting::Outcome::Exit(exit) => return Ok(exit),
+                    crate::semihosting::Outcome::Continue(events) => {
+                        for ev in &events {
+                            if sender
+                                .publish::<SemihostingTopic>(VarSeq::Seq2(0), ev)
+                                .await
+                                .is_err()
+                            {
+                                return Ok(client_gone());
                             }
-                            core.run().await.map_err(err)?;
-                            // Output often comes in bursts of semihosting calls.
-                            next_poll = Duration::ZERO;
                         }
+                        core.run().await.map_err(err)?;
+                        // Output often comes in bursts of semihosting calls.
+                        next_poll = Duration::ZERO;
                     }
                 }
             }
         }
-        if let (Some(ptr), Some(key)) = (learned_ptr.take(), req.options.rtt_client) {
-            if let Some(cfg) = ctx.inner.lock().await.rtt.get_mut(&key.id()) {
-                cfg.found_at = Some(ptr);
-            }
+        if let (Some(ptr), Some(key)) = (learned_ptr.take(), req.options.rtt_client)
+            && let Some(cfg) = ctx.inner.lock().await.rtt.get_mut(&key.id())
+        {
+            cfg.found_at = Some(ptr);
         }
         probe_rs::probe::usb_util::wait(next_poll).await;
     }
@@ -887,7 +1107,11 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
 
 // ---------------------------------------------------------------- target / cores / memory
 
-async fn target_metadata(ctx: &mut Ctx, _h: VarHeader, req: TargetMetadataRequest) -> TargetMetadataResponse {
+async fn target_metadata(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: TargetMetadataRequest,
+) -> TargetMetadataResponse {
     let mut inner = ctx.inner.lock().await;
     let session = inner.session(req.sessid)?;
     let target = session.target();
@@ -897,9 +1121,17 @@ async fn target_metadata(ctx: &mut Ctx, _h: VarHeader, req: TargetMetadataReques
         cores: session
             .list_cores()
             .into_iter()
-            .map(|(index, t)| WireSessionCore { index: index as u32, core_type: convert::core_type(t) })
+            .map(|(index, t)| WireSessionCore {
+                index: index as u32,
+                core_type: convert::core_type(t),
+            })
             .collect(),
-        memory_map: target.memory_map.iter().cloned().map(convert::memory_region).collect(),
+        memory_map: target
+            .memory_map
+            .iter()
+            .cloned()
+            .map(convert::memory_region)
+            .collect(),
         flash_sectors: convert::flash_sectors(target),
     })
 }
@@ -912,7 +1144,11 @@ async fn reset(ctx: &mut Ctx, _h: VarHeader, req: ResetCoreRequest) -> NoRespons
     Ok(())
 }
 
-async fn reset_and_halt(ctx: &mut Ctx, _h: VarHeader, req: ResetCoreAndHaltRequest) -> RpcResult<WireCoreInformation> {
+async fn reset_and_halt(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: ResetCoreAndHaltRequest,
+) -> RpcResult<WireCoreInformation> {
     let mut inner = ctx.inner.lock().await;
     let session = inner.session(req.sessid)?;
     let mut core = session.core(req.core as usize).await.map_err(err)?;
@@ -920,14 +1156,22 @@ async fn reset_and_halt(ctx: &mut Ctx, _h: VarHeader, req: ResetCoreAndHaltReque
     Ok(WireCoreInformation { pc: info.pc })
 }
 
-async fn core_status(ctx: &mut Ctx, _h: VarHeader, req: CoreAccessRequest) -> RpcResult<WireCoreStatus> {
+async fn core_status(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: CoreAccessRequest,
+) -> RpcResult<WireCoreStatus> {
     let mut inner = ctx.inner.lock().await;
     let session = inner.session(req.sessid)?;
     let mut core = session.core(req.core as usize).await.map_err(err)?;
     Ok(convert::core_status(core.status().await.map_err(err)?))
 }
 
-async fn core_halt(ctx: &mut Ctx, _h: VarHeader, req: CoreHaltRequest) -> RpcResult<WireCoreInformation> {
+async fn core_halt(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: CoreHaltRequest,
+) -> RpcResult<WireCoreInformation> {
     let mut inner = ctx.inner.lock().await;
     let session = inner.session(req.sessid)?;
     let mut core = session.core(req.core as usize).await.map_err(err)?;
@@ -945,7 +1189,11 @@ async fn core_run(ctx: &mut Ctx, _h: VarHeader, req: CoreAccessRequest) -> NoRes
 
 macro_rules! read_mem {
     ($name:ident, $ty:ty, $read:ident) => {
-        async fn $name(ctx: &mut Ctx, _h: VarHeader, req: ReadMemoryRequest) -> RpcResult<Vec<$ty>> {
+        async fn $name(
+            ctx: &mut Ctx,
+            _h: VarHeader,
+            req: ReadMemoryRequest,
+        ) -> RpcResult<Vec<$ty>> {
             let mut inner = ctx.inner.lock().await;
             let session = inner.session(req.sessid)?;
             let mut core = session.core(req.core as usize).await.map_err(err)?;
@@ -991,67 +1239,307 @@ write_mem!(write_memory64, u64, write_64);
 pub const LOCAL_ENDPOINT_LIST: postcard_rpc::EndpointMap = postcard_rpc::EndpointMap {
     types: ENDPOINT_LIST.types,
     endpoints: &[
-    // postcard-rpc's standard endpoints, served by the dispatcher itself.
-    (<postcard_rpc::standard_icd::PingEndpoint as postcard_rpc::Endpoint>::PATH, <postcard_rpc::standard_icd::PingEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <postcard_rpc::standard_icd::PingEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<postcard_rpc::standard_icd::GetAllSchemasEndpoint as postcard_rpc::Endpoint>::PATH, <postcard_rpc::standard_icd::GetAllSchemasEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <postcard_rpc::standard_icd::GetAllSchemasEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ListProbesEndpoint as postcard_rpc::Endpoint>::PATH, <ListProbesEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ListProbesEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<AttachEndpoint as postcard_rpc::Endpoint>::PATH, <AttachEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <AttachEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ListChipFamiliesEndpoint as postcard_rpc::Endpoint>::PATH, <ListChipFamiliesEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ListChipFamiliesEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ChipInfoEndpoint as postcard_rpc::Endpoint>::PATH, <ChipInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ChipInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<LoadChipFamilyEndpoint as postcard_rpc::Endpoint>::PATH, <LoadChipFamilyEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <LoadChipFamilyEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CreateTempFileEndpoint as postcard_rpc::Endpoint>::PATH, <CreateTempFileEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CreateTempFileEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<TempFileDataEndpoint as postcard_rpc::Endpoint>::PATH, <TempFileDataEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <TempFileDataEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<NewFlashLoaderEndpoint as postcard_rpc::Endpoint>::PATH, <NewFlashLoaderEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <NewFlashLoaderEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<LoadRegionEndpoint as postcard_rpc::Endpoint>::PATH, <LoadRegionEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <LoadRegionEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<BuildEndpoint as postcard_rpc::Endpoint>::PATH, <BuildEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <BuildEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<FlashEndpoint as postcard_rpc::Endpoint>::PATH, <FlashEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <FlashEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<VerifyEndpoint as postcard_rpc::Endpoint>::PATH, <VerifyEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <VerifyEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<EraseAllEndpoint as postcard_rpc::Endpoint>::PATH, <EraseAllEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <EraseAllEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<BootEndpoint as postcard_rpc::Endpoint>::PATH, <BootEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <BootEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CreateRttClientEndpoint as postcard_rpc::Endpoint>::PATH, <CreateRttClientEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CreateRttClientEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<GetRttChannelsEndpoint as postcard_rpc::Endpoint>::PATH, <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<RttDownEndpoint as postcard_rpc::Endpoint>::PATH, <RttDownEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <RttDownEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<TargetInfoEndpoint as postcard_rpc::Endpoint>::PATH, <TargetInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <TargetInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<MonitorEndpoint as postcard_rpc::Endpoint>::PATH, <MonitorEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <MonitorEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<TargetMetadataEndpoint as postcard_rpc::Endpoint>::PATH, <TargetMetadataEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <TargetMetadataEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ResetCoreEndpoint as postcard_rpc::Endpoint>::PATH, <ResetCoreEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ResetCoreEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ResetCoreAndHaltEndpoint as postcard_rpc::Endpoint>::PATH, <ResetCoreAndHaltEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ResetCoreAndHaltEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreStatusEndpoint as postcard_rpc::Endpoint>::PATH, <CoreStatusEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreStatusEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreHaltEndpoint as postcard_rpc::Endpoint>::PATH, <CoreHaltEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreHaltEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreRunEndpoint as postcard_rpc::Endpoint>::PATH, <CoreRunEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreRunEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ReadMemory8Endpoint as postcard_rpc::Endpoint>::PATH, <ReadMemory8Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <ReadMemory8Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ReadMemory16Endpoint as postcard_rpc::Endpoint>::PATH, <ReadMemory16Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <ReadMemory16Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ReadMemory32Endpoint as postcard_rpc::Endpoint>::PATH, <ReadMemory32Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <ReadMemory32Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ReadMemory64Endpoint as postcard_rpc::Endpoint>::PATH, <ReadMemory64Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <ReadMemory64Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ReadBytesEndpoint as postcard_rpc::Endpoint>::PATH, <ReadBytesEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ReadBytesEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<WriteMemory8Endpoint as postcard_rpc::Endpoint>::PATH, <WriteMemory8Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <WriteMemory8Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<WriteMemory16Endpoint as postcard_rpc::Endpoint>::PATH, <WriteMemory16Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <WriteMemory16Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<WriteMemory32Endpoint as postcard_rpc::Endpoint>::PATH, <WriteMemory32Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <WriteMemory32Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<WriteMemory64Endpoint as postcard_rpc::Endpoint>::PATH, <WriteMemory64Endpoint as postcard_rpc::Endpoint>::REQ_KEY, <WriteMemory64Endpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<LoadDebugInfoEndpoint as postcard_rpc::Endpoint>::PATH, <LoadDebugInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <LoadDebugInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<TakeRichStackTraceEndpoint as postcard_rpc::Endpoint>::PATH, <TakeRichStackTraceEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <TakeRichStackTraceEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<HaltCoresEndpoint as postcard_rpc::Endpoint>::PATH, <HaltCoresEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <HaltCoresEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ResumeCoresEndpoint as postcard_rpc::Endpoint>::PATH, <ResumeCoresEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ResumeCoresEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoresStatusEndpoint as postcard_rpc::Endpoint>::PATH, <CoresStatusEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoresStatusEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreStepEndpoint as postcard_rpc::Endpoint>::PATH, <CoreStepEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreStepEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreWriteRegEndpoint as postcard_rpc::Endpoint>::PATH, <CoreWriteRegEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreWriteRegEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreSetHwBpsEndpoint as postcard_rpc::Endpoint>::PATH, <CoreSetHwBpsEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreSetHwBpsEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreClearHwBpsEndpoint as postcard_rpc::Endpoint>::PATH, <CoreClearHwBpsEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreClearHwBpsEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreEnableVcEndpoint as postcard_rpc::Endpoint>::PATH, <CoreEnableVcEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreEnableVcEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreMetadataEndpoint as postcard_rpc::Endpoint>::PATH, <CoreMetadataEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreMetadataEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreReadRegistersEndpoint as postcard_rpc::Endpoint>::PATH, <CoreReadRegistersEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreReadRegistersEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ScopesEndpoint as postcard_rpc::Endpoint>::PATH, <ScopesEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ScopesEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<VariablesEndpoint as postcard_rpc::Endpoint>::PATH, <VariablesEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <VariablesEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ClearCoreDebugStateEndpoint as postcard_rpc::Endpoint>::PATH, <ClearCoreDebugStateEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ClearCoreDebugStateEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ResolveSourceBreakpointsEndpoint as postcard_rpc::Endpoint>::PATH, <ResolveSourceBreakpointsEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ResolveSourceBreakpointsEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::PATH, <ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<EvaluateEndpoint as postcard_rpc::Endpoint>::PATH, <EvaluateEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <EvaluateEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<SetVariableEndpoint as postcard_rpc::Endpoint>::PATH, <SetVariableEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <SetVariableEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<LoadSvdEndpoint as postcard_rpc::Endpoint>::PATH, <LoadSvdEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <LoadSvdEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CoreDumpEndpoint as postcard_rpc::Endpoint>::PATH, <CoreDumpEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CoreDumpEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<PollRttUpEndpoint as postcard_rpc::Endpoint>::PATH, <PollRttUpEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <PollRttUpEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<CleanUpRttEndpoint as postcard_rpc::Endpoint>::PATH, <CleanUpRttEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CleanUpRttEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
-    (<HandleSemihostingEndpoint as postcard_rpc::Endpoint>::PATH, <HandleSemihostingEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <HandleSemihostingEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
+        // postcard-rpc's standard endpoints, served by the dispatcher itself.
+        (
+            <postcard_rpc::standard_icd::PingEndpoint as postcard_rpc::Endpoint>::PATH,
+            <postcard_rpc::standard_icd::PingEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <postcard_rpc::standard_icd::PingEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <postcard_rpc::standard_icd::GetAllSchemasEndpoint as postcard_rpc::Endpoint>::PATH,
+            <postcard_rpc::standard_icd::GetAllSchemasEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <postcard_rpc::standard_icd::GetAllSchemasEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ListProbesEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ListProbesEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ListProbesEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <AttachEndpoint as postcard_rpc::Endpoint>::PATH,
+            <AttachEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <AttachEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ListChipFamiliesEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ListChipFamiliesEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ListChipFamiliesEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ChipInfoEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ChipInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ChipInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <LoadChipFamilyEndpoint as postcard_rpc::Endpoint>::PATH,
+            <LoadChipFamilyEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <LoadChipFamilyEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CreateTempFileEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CreateTempFileEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CreateTempFileEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <TempFileDataEndpoint as postcard_rpc::Endpoint>::PATH,
+            <TempFileDataEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <TempFileDataEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <NewFlashLoaderEndpoint as postcard_rpc::Endpoint>::PATH,
+            <NewFlashLoaderEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <NewFlashLoaderEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <LoadRegionEndpoint as postcard_rpc::Endpoint>::PATH,
+            <LoadRegionEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <LoadRegionEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <BuildEndpoint as postcard_rpc::Endpoint>::PATH,
+            <BuildEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <BuildEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <FlashEndpoint as postcard_rpc::Endpoint>::PATH,
+            <FlashEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <FlashEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <VerifyEndpoint as postcard_rpc::Endpoint>::PATH,
+            <VerifyEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <VerifyEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <EraseAllEndpoint as postcard_rpc::Endpoint>::PATH,
+            <EraseAllEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <EraseAllEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <BootEndpoint as postcard_rpc::Endpoint>::PATH,
+            <BootEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <BootEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CreateRttClientEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CreateRttClientEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CreateRttClientEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::PATH,
+            <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <RttDownEndpoint as postcard_rpc::Endpoint>::PATH,
+            <RttDownEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <RttDownEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <TargetInfoEndpoint as postcard_rpc::Endpoint>::PATH,
+            <TargetInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <TargetInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <MonitorEndpoint as postcard_rpc::Endpoint>::PATH,
+            <MonitorEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <MonitorEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <TargetMetadataEndpoint as postcard_rpc::Endpoint>::PATH,
+            <TargetMetadataEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <TargetMetadataEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ResetCoreEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ResetCoreEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ResetCoreEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ResetCoreAndHaltEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ResetCoreAndHaltEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ResetCoreAndHaltEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreStatusEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreStatusEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreStatusEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreHaltEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreHaltEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreHaltEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreRunEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreRunEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreRunEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ReadMemory8Endpoint as postcard_rpc::Endpoint>::PATH,
+            <ReadMemory8Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ReadMemory8Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ReadMemory16Endpoint as postcard_rpc::Endpoint>::PATH,
+            <ReadMemory16Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ReadMemory16Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ReadMemory32Endpoint as postcard_rpc::Endpoint>::PATH,
+            <ReadMemory32Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ReadMemory32Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ReadMemory64Endpoint as postcard_rpc::Endpoint>::PATH,
+            <ReadMemory64Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ReadMemory64Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ReadBytesEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ReadBytesEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ReadBytesEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <WriteMemory8Endpoint as postcard_rpc::Endpoint>::PATH,
+            <WriteMemory8Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <WriteMemory8Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <WriteMemory16Endpoint as postcard_rpc::Endpoint>::PATH,
+            <WriteMemory16Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <WriteMemory16Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <WriteMemory32Endpoint as postcard_rpc::Endpoint>::PATH,
+            <WriteMemory32Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <WriteMemory32Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <WriteMemory64Endpoint as postcard_rpc::Endpoint>::PATH,
+            <WriteMemory64Endpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <WriteMemory64Endpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <LoadDebugInfoEndpoint as postcard_rpc::Endpoint>::PATH,
+            <LoadDebugInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <LoadDebugInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <TakeRichStackTraceEndpoint as postcard_rpc::Endpoint>::PATH,
+            <TakeRichStackTraceEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <TakeRichStackTraceEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <HaltCoresEndpoint as postcard_rpc::Endpoint>::PATH,
+            <HaltCoresEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <HaltCoresEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ResumeCoresEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ResumeCoresEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ResumeCoresEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoresStatusEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoresStatusEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoresStatusEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreStepEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreStepEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreStepEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreWriteRegEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreWriteRegEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreWriteRegEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreSetHwBpsEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreSetHwBpsEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreSetHwBpsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreClearHwBpsEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreClearHwBpsEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreClearHwBpsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreEnableVcEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreEnableVcEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreEnableVcEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreMetadataEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreMetadataEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreMetadataEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreReadRegistersEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreReadRegistersEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreReadRegistersEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ScopesEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ScopesEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ScopesEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <VariablesEndpoint as postcard_rpc::Endpoint>::PATH,
+            <VariablesEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <VariablesEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ClearCoreDebugStateEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ClearCoreDebugStateEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ClearCoreDebugStateEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ResolveSourceBreakpointsEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ResolveSourceBreakpointsEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ResolveSourceBreakpointsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <EvaluateEndpoint as postcard_rpc::Endpoint>::PATH,
+            <EvaluateEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <EvaluateEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <SetVariableEndpoint as postcard_rpc::Endpoint>::PATH,
+            <SetVariableEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <SetVariableEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <LoadSvdEndpoint as postcard_rpc::Endpoint>::PATH,
+            <LoadSvdEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <LoadSvdEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CoreDumpEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CoreDumpEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CoreDumpEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <PollRttUpEndpoint as postcard_rpc::Endpoint>::PATH,
+            <PollRttUpEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <PollRttUpEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <CleanUpRttEndpoint as postcard_rpc::Endpoint>::PATH,
+            <CleanUpRttEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <CleanUpRttEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <HandleSemihostingEndpoint as postcard_rpc::Endpoint>::PATH,
+            <HandleSemihostingEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <HandleSemihostingEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
     ],
 };
 

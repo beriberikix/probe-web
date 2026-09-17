@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel a superseded run of the same branch: a full build compiles probe-rs from source.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The toolchain and the wasm32 target come from rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: none
+      - uses: Swatinem/rust-cache@v2
+
+      # Must match the wasm-bindgen crate version in Cargo.lock, or the glue and the
+      # module disagree.
+      - name: Install wasm-bindgen-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.128
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Build the wasm crates
+        run: ./scripts/build-wasm.sh
+
+      - name: Generated wire types are up to date
+        run: git diff --exit-code packages/client/src/wire.ts
+
+      - run: npx tsc -b packages/client packages/ui packages/dap packages/devices packages/artifacts packages/serial apps/flash apps/workbench examples/monaco-ide
+      - run: npm test
+
+      - name: Browser tests (fake probe, no hardware)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      - name: Build the static site
+        run: ./scripts/build-site.sh
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  rust-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: none
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      # The lint that keeps host-only APIs (thread::sleep, std Instant) out of wasm builds.
+      - run: cargo clippy --target wasm32-unknown-unknown -p probe-web-core -p probe-web-local -- -D warnings

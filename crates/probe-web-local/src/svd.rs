@@ -289,8 +289,9 @@ impl SvdVariable {
 /// Parse an uploaded SVD file (`name` is only used in errors), then build the variable cache.
 #[tracing::instrument(skip_all)]
 pub fn parse_svd_bytes(bytes: &[u8], name: &str) -> Result<SvdVariableCache, DebugError> {
-    let svd_xml = std::str::from_utf8(bytes)
-        .map_err(|error| DebugError::Other(format!("The CMSIS-SVD file {name} is not UTF-8: {error}")))?;
+    let svd_xml = std::str::from_utf8(bytes).map_err(|error| {
+        DebugError::Other(format!("The CMSIS-SVD file {name} is not UTF-8: {error}"))
+    })?;
 
     let device = svd_parser::parse_with_config(
         svd_xml,
@@ -304,9 +305,7 @@ pub fn parse_svd_bytes(bytes: &[u8], name: &str) -> Result<SvdVariableCache, Deb
             .ignore_enums(true),
     )
     .map_err(|error| {
-        DebugError::Other(format!(
-            "Unable to parse CMSIS-SVD file: {name}. {error:?}"
-        ))
+        DebugError::Other(format!("Unable to parse CMSIS-SVD file: {name}. {error:?}"))
     })?;
 
     build_svd_cache(&device)

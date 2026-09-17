@@ -25,7 +25,10 @@ pub fn sample_results() -> Result<JsValue, JsValue> {
         AttachResult::Success(Key::<Session>::new()),
         AttachResult::ProbeNotFound,
         AttachResult::FailedToOpenProbe("nope".into()),
-        AttachResult::TargetAttachFailed { message: "m".into(), connect_under_reset: true },
+        AttachResult::TargetAttachFailed {
+            message: "m".into(),
+            connect_under_reset: true,
+        },
     ];
     Ok(samples.serialize(&ser())?)
 }

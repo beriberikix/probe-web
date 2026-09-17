@@ -54,16 +54,20 @@ export type Transport =
  * as `log:` messages); in a browser it also comes from `?workerLog=` on the page.
  */
 export function createLocalWorker(opts: { fake?: boolean; log?: string } = {}): Worker {
-  const url = opts.fake
-    ? new URL('../worker/fake/local-worker.js', import.meta.url)
-    : new URL('../worker/local-worker.js', import.meta.url);
+  // Both `new Worker(new URL(…, import.meta.url))` calls are written out in full: a bundler
+  // only recognises a worker, and so only emits its chunk, when the URL is a literal.
+  const worker = opts.fake
+    ? new Worker(new URL('../worker/fake/local-worker.js', import.meta.url), { type: 'module' })
+    : new Worker(new URL('../worker/local-worker.js', import.meta.url), { type: 'module' });
   const level =
     opts.log ??
     (typeof location !== 'undefined'
       ? (new URLSearchParams(location.search).get('workerLog') ?? undefined)
       : undefined);
-  if (level) url.searchParams.set('log', level);
-  return new Worker(url, { type: 'module' });
+  // The worker waits for this before starting probe-rs, so the level is set before its
+  // tracing subscriber is installed.
+  worker.postMessage(`init:${level ?? ''}`);
+  return worker;
 }
 
 export interface ProbeWebError extends Error {

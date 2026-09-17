@@ -34,12 +34,15 @@ mod server {
     };
     use probe_rs_rpc::{
         AttachEndpoint, CancelTopic, CoreHaltEndpoint, CoreRunEndpoint, ENDPOINT_LIST,
-        ListChipFamiliesEndpoint, ListProbesEndpoint, NoResponse, ReadMemory32Endpoint,
-        RpcError, RpcResult, Session, TOPICS_IN_LIST, TOPICS_OUT_LIST, TokioSpawner,
+        ListChipFamiliesEndpoint, ListProbesEndpoint, NoResponse, ReadMemory32Endpoint, RpcError,
+        RpcResult, Session, TOPICS_IN_LIST, TOPICS_OUT_LIST, TokioSpawner,
         chip::{Chip, ChipFamily, JEP106Code, ListFamiliesResponse},
         core_ops::{CoreAccessRequest, CoreHaltRequest, WireCoreInformation},
         memory::ReadMemoryRequest,
-        probe::{AttachRequest, AttachResponse, AttachResult, DebugProbeEntry, ListProbesResponse, WireProtocol},
+        probe::{
+            AttachRequest, AttachResponse, AttachResult, DebugProbeEntry, ListProbesResponse,
+            WireProtocol,
+        },
         transport::memory::{WireRx, WireTx},
     };
     use tokio::sync::mpsc::{Receiver, Sender};
@@ -59,8 +62,13 @@ mod server {
                 sessions: HashMap::new(),
             }
         }
-        fn session(&mut self, key: probe_rs_rpc::Key<Session>) -> RpcResult<&mut probe_rs::Session> {
-            self.sessions.get_mut(&key.id()).ok_or_else(|| RpcError::from("unknown session"))
+        fn session(
+            &mut self,
+            key: probe_rs_rpc::Key<Session>,
+        ) -> RpcResult<&mut probe_rs::Session> {
+            self.sessions
+                .get_mut(&key.id())
+                .ok_or_else(|| RpcError::from("unknown session"))
         }
     }
 
@@ -108,7 +116,13 @@ mod server {
             .map(|f| ChipFamily {
                 name: f.name.clone(),
                 manufacturer: f.manufacturer.map(|m| JEP106Code { id: m.id, cc: m.cc }),
-                variants: f.variants.iter().map(|v| Chip { name: v.name.clone() }).collect(),
+                variants: f
+                    .variants
+                    .iter()
+                    .map(|v| Chip {
+                        name: v.name.clone(),
+                    })
+                    .collect(),
             })
             .collect())
     }
@@ -152,7 +166,11 @@ mod server {
         Ok(AttachResult::Success(key))
     }
 
-    async fn core_halt(ctx: &mut Ctx, _h: VarHeader, req: CoreHaltRequest) -> RpcResult<WireCoreInformation> {
+    async fn core_halt(
+        ctx: &mut Ctx,
+        _h: VarHeader,
+        req: CoreHaltRequest,
+    ) -> RpcResult<WireCoreInformation> {
         let session = ctx.session(req.sessid)?;
         let mut core = session.core(req.core as usize).await.map_err(err)?;
         let info = core.halt(req.timeout).await.map_err(err)?;
@@ -166,7 +184,11 @@ mod server {
         Ok(())
     }
 
-    async fn read_memory32(ctx: &mut Ctx, _h: VarHeader, req: ReadMemoryRequest) -> RpcResult<Vec<u32>> {
+    async fn read_memory32(
+        ctx: &mut Ctx,
+        _h: VarHeader,
+        req: ReadMemoryRequest,
+    ) -> RpcResult<Vec<u32>> {
         let session = ctx.session(req.sessid)?;
         let mut core = session.core(req.core as usize).await.map_err(err)?;
         let mut words = vec![0u32; req.count as usize];
@@ -258,7 +280,9 @@ pub fn worker_main() -> js_sys::Function {
 struct ChanTx(mpsc::UnboundedSender<Vec<u8>>);
 impl PostcardSender for ChanTx {
     async fn send(&self, buf: Vec<u8>) -> Result<(), WireTxErrorKind> {
-        self.0.send(buf).map_err(|_| WireTxErrorKind::ConnectionClosed)
+        self.0
+            .send(buf)
+            .map_err(|_| WireTxErrorKind::ConnectionClosed)
     }
 }
 struct ChanRx(mpsc::UnboundedReceiver<Vec<u8>>);
@@ -303,7 +327,9 @@ pub async fn main_run(chip: String, protocol: String, addr_hex: String) -> Resul
     onmessage.forget();
 
     let t0 = web_time::Instant::now();
-    ready_rx.await.map_err(|_| js_err("worker never became ready"))?;
+    ready_rx
+        .await
+        .map_err(|_| js_err("worker never became ready"))?;
     out.push_str(&format!("worker ready in {:?}\n", t0.elapsed()));
 
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -345,7 +371,11 @@ pub async fn main_run(chip: String, protocol: String, addr_hex: String) -> Resul
         _ => None,
     };
     let req = AttachRequest {
-        chip: if chip.eq_ignore_ascii_case("auto") || chip.is_empty() { None } else { Some(chip) },
+        chip: if chip.eq_ignore_ascii_case("auto") || chip.is_empty() {
+            None
+        } else {
+            Some(chip)
+        },
         protocol,
         probe: probe.clone(),
         speed: None,
@@ -360,14 +390,21 @@ pub async fn main_run(chip: String, protocol: String, addr_hex: String) -> Resul
         AttachResult::Success(k) => k,
         AttachResult::ProbeNotFound => return Err(js_err("attach failed: probe not found")),
         AttachResult::ProbeInUse => return Err(js_err("attach failed: probe in use")),
-        AttachResult::FailedToOpenProbe(m) => return Err(js_err(format!("attach failed: open: {m}"))),
-        AttachResult::TargetAttachFailed { message, .. } => return Err(js_err(format!("attach failed: {message}"))),
+        AttachResult::FailedToOpenProbe(m) => {
+            return Err(js_err(format!("attach failed: open: {m}")));
+        }
+        AttachResult::TargetAttachFailed { message, .. } => {
+            return Err(js_err(format!("attach failed: {message}")));
+        }
     };
     out.push_str(&format!("attached in {:?}\n", t1.elapsed()));
 
     let session = SessionInterface::new(client.clone(), sessid);
     let core = session.core(0);
-    let info = core.halt(std::time::Duration::from_millis(500)).await.map_err(js_err)?;
+    let info = core
+        .halt(std::time::Duration::from_millis(500))
+        .await
+        .map_err(js_err)?;
     out.push_str(&format!("halted, pc={:#010x}\n", info.pc));
 
     let addr = u64::from_str_radix(addr_hex.trim().trim_start_matches("0x"), 16).unwrap_or(0);

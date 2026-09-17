@@ -43,43 +43,60 @@ pub enum Outcome {
 }
 
 impl ConsoleSemihosting {
-    pub async fn handle(&mut self, cmd: SemihostingCommand, core: &mut Core<'_>) -> Result<Outcome, probe_rs::Error> {
+    pub async fn handle(
+        &mut self,
+        cmd: SemihostingCommand,
+        core: &mut Core<'_>,
+    ) -> Result<Outcome, probe_rs::Error> {
         let mut events = Vec::new();
-        let output = |stream: Stream, data: String| SemihostingEvent::Output { stream: stream.name().into(), data };
+        let output = |stream: Stream, data: String| SemihostingEvent::Output {
+            stream: stream.name().into(),
+            data,
+        };
         match cmd {
-            SemihostingCommand::ExitSuccess => return Ok(Outcome::Exit(MonitorExitReason::SemihostingExit(Ok(())))),
-            SemihostingCommand::ExitError(d) => {
-                return Ok(Outcome::Exit(MonitorExitReason::SemihostingExit(Err(SemihostingExitError {
-                    reason: d.reason,
-                    subcode: d.exit_status.or(d.subcode),
-                }))));
+            SemihostingCommand::ExitSuccess => {
+                return Ok(Outcome::Exit(MonitorExitReason::SemihostingExit(Ok(()))));
             }
-            SemihostingCommand::WriteConsole(req) => events.push(output(Stream::Stdout, req.read(core).await?)),
+            SemihostingCommand::ExitError(d) => {
+                return Ok(Outcome::Exit(MonitorExitReason::SemihostingExit(Err(
+                    SemihostingExitError {
+                        reason: d.reason,
+                        subcode: d.exit_status.or(d.subcode),
+                    },
+                ))));
+            }
+            SemihostingCommand::WriteConsole(req) => {
+                events.push(output(Stream::Stdout, req.read(core).await?))
+            }
             SemihostingCommand::Open(req) => {
                 let path = req.path(core).await?;
                 let stream = match (path.as_str(), req.mode().as_bytes().first()) {
                     (":tt", Some(b'w')) => Some(Stream::Stdout),
                     (":tt", Some(b'a')) => Some(Stream::Stderr),
                     _ => {
-                        log(&format!("semihosting: refusing open of {path:?} (mode {}); only :tt is available in the browser", req.mode()));
+                        log(&format!(
+                            "semihosting: refusing open of {path:?} (mode {}); only :tt is available in the browser",
+                            req.mode()
+                        ));
                         None
                     }
                 };
                 if let Some(stream) = stream {
                     self.handles.push(Some(stream));
-                    let handle = NonZeroU32::new(self.handles.len() as u32).unwrap_or(NonZeroU32::MIN);
+                    let handle =
+                        NonZeroU32::new(self.handles.len() as u32).unwrap_or(NonZeroU32::MIN);
                     req.respond_with_handle(core, handle).await?;
                 }
             }
             SemihostingCommand::Close(req) => {
                 let h = req.file_handle(core).await? as usize;
-                if let Some(slot) = h.checked_sub(1).and_then(|i| self.handles.get_mut(i)) {
-                    if slot.take().is_some() {
-                        while matches!(self.handles.last(), Some(None)) {
-                            self.handles.pop();
-                        }
-                        req.success(core).await?;
+                if let Some(slot) = h.checked_sub(1).and_then(|i| self.handles.get_mut(i))
+                    && slot.take().is_some()
+                {
+                    while matches!(self.handles.last(), Some(None)) {
+                        self.handles.pop();
                     }
+                    req.success(core).await?;
                 }
             }
             SemihostingCommand::Write(req) => {
@@ -93,11 +110,16 @@ impl ConsoleSemihosting {
                         // Status = number of bytes NOT written.
                         req.write_status(core, 0).await?;
                     }
-                    None => log(&format!("semihosting: write to unknown handle {}", req.file_handle())),
+                    None => log(&format!(
+                        "semihosting: write to unknown handle {}",
+                        req.file_handle()
+                    )),
                 }
             }
             SemihostingCommand::Errno(_) => {}
-            SemihostingCommand::GetCommandLine(_) => log("semihosting: SYS_GET_CMDLINE is not supported; continuing"),
+            SemihostingCommand::GetCommandLine(_) => {
+                log("semihosting: SYS_GET_CMDLINE is not supported; continuing")
+            }
             SemihostingCommand::Unknown(d) => log(&format!(
                 "semihosting: unsupported operation {:#x} (parameter {:#x}); continuing",
                 d.operation, d.parameter

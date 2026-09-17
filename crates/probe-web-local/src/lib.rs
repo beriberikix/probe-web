@@ -12,8 +12,8 @@ mod core_ops;
 mod debug_state;
 mod info;
 mod semihosting;
-mod svd;
 mod server;
+mod svd;
 
 use postcard_rpc::server::{Dispatch, Server, WireRxErrorKind};
 use probe_rs_rpc::transport::memory::{WireRx, WireTx};
@@ -55,7 +55,12 @@ pub fn start(log_level: Option<String>) -> js_sys::Function {
     }));
     // probe-rs's own tracing goes to the worker console (and from there to the
     // page via local-worker.js). WARN by default; raise to INFO to see the vendor sequences' steps.
-    let level = match log_level.as_deref().unwrap_or("warn").to_ascii_lowercase().as_str() {
+    let level = match log_level
+        .as_deref()
+        .unwrap_or("warn")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "trace" => tracing::Level::TRACE,
         "debug" => tracing::Level::DEBUG,
         "info" => tracing::Level::INFO,
@@ -67,7 +72,8 @@ pub fn start(log_level: Option<String>) -> js_sys::Function {
     let (c2s_tx, c2s_rx) = mpsc::channel::<Result<Vec<u8>, WireRxErrorKind>>(256);
     let (s2c_tx, mut s2c_rx) = mpsc::channel::<Vec<u8>>(256);
 
-    let mut dispatcher = server::App::new(server::Ctx::new(), probe_rs_rpc::TokioSpawner::default());
+    let mut dispatcher =
+        server::App::new(server::Ctx::new(), probe_rs_rpc::TokioSpawner::default());
     let vkk = dispatcher.min_key_len();
     let tx = WireTx::new(s2c_tx);
     dispatcher

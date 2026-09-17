@@ -24,7 +24,9 @@ pub const CHALLENGE_FRAME_PROTOCOL: &str = "probe-rs.challenge-frame";
 pub struct ChanTx(pub mpsc::UnboundedSender<Vec<u8>>);
 impl PostcardSender for ChanTx {
     async fn send(&self, buf: Vec<u8>) -> Result<(), WireTxErrorKind> {
-        self.0.send(buf).map_err(|_| WireTxErrorKind::ConnectionClosed)
+        self.0
+            .send(buf)
+            .map_err(|_| WireTxErrorKind::ConnectionClosed)
     }
 }
 pub struct ChanRx(pub mpsc::UnboundedReceiver<Vec<u8>>);
@@ -36,7 +38,10 @@ impl PostcardReceiver for ChanRx {
 
 /// Connect to `probe-rs serve` at `url` (a `ws://…/worker` URL; the path is
 /// added when missing) and authenticate with `token`.
-pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Capabilities, WebSocket), JsValue> {
+pub async fn connect_web_socket(
+    url: &str,
+    token: &str,
+) -> Result<(RpcClient, Capabilities, WebSocket), JsValue> {
     let url = if url.ends_with("/worker") {
         url.to_string()
     } else {
@@ -82,7 +87,11 @@ pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Ca
     let onclose = Closure::<dyn FnMut(CloseEvent)>::new({
         let open_tx = open_tx.clone();
         move |ev: CloseEvent| {
-            log(&format!("websocket closed: code={} reason={:?}", ev.code(), ev.reason()));
+            log(&format!(
+                "websocket closed: code={} reason={:?}",
+                ev.code(),
+                ev.reason()
+            ));
             if let Some(tx) = open_tx.borrow_mut().take() {
                 let _ = tx.send(Err(format!("connection closed (code {})", ev.code())));
             }
@@ -107,7 +116,10 @@ pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Ca
         .await
         .ok_or_else(|| error("transport", "closed before challenge"))?;
     let challenge_str = String::from_utf8_lossy(&challenge).to_string();
-    if base64::engine::general_purpose::STANDARD.decode(&challenge_str).is_err() {
+    if base64::engine::general_purpose::STANDARD
+        .decode(&challenge_str)
+        .is_err()
+    {
         return Err(error("transport", "malformed challenge frame"));
     }
     let mut hasher = Sha512::new();
@@ -131,9 +143,10 @@ pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Ca
     let client = RpcClient::new_from_wire(ChanTx(out_tx), ChanRx(in_rx));
     let caps = client.negotiate().await.map_err(|e| match e {
         // A wrong token makes the server close the socket during the schema handshake.
-        probe_rs_rpc_client::ClientError::Transport(_) => {
-            error("auth", "server closed the connection: wrong token, or no users configured")
-        }
+        probe_rs_rpc_client::ClientError::Transport(_) => error(
+            "auth",
+            "server closed the connection: wrong token, or no users configured",
+        ),
         e => client_err(e),
     })?;
     Ok((client, caps, ws))
@@ -244,17 +257,27 @@ pub async fn connect_worker(worker: Worker) -> Result<(RpcClient, Capabilities),
     // The worker may already have posted "ready" before we attached; it also
     // re-posts on request.
     let _ = worker.post_message(&JsValue::from_str("ping"));
-    let ready = futures::future::select(ready_rx, Box::pin(sleep_ms(WORKER_READY_TIMEOUT_MS))).await;
+    let ready =
+        futures::future::select(ready_rx, Box::pin(sleep_ms(WORKER_READY_TIMEOUT_MS))).await;
     match ready {
         futures::future::Either::Left((Ok(()), _)) => {}
         futures::future::Either::Left((Err(_), _)) => {
-            let reason = dead.borrow().clone().unwrap_or_else(|| "unknown reason".into());
-            return Err(error("worker-crashed", format!("the probe-rs worker failed to start: {reason}")));
+            let reason = dead
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| "unknown reason".into());
+            return Err(error(
+                "worker-crashed",
+                format!("the probe-rs worker failed to start: {reason}"),
+            ));
         }
         futures::future::Either::Right(_) => {
             return Err(error(
                 "transport",
-                format!("the probe-rs worker did not start within {} s", WORKER_READY_TIMEOUT_MS / 1000),
+                format!(
+                    "the probe-rs worker did not start within {} s",
+                    WORKER_READY_TIMEOUT_MS / 1000
+                ),
             ));
         }
     }
@@ -277,7 +300,12 @@ pub async fn connect_worker(worker: Worker) -> Result<(RpcClient, Capabilities),
     });
 
     let client = RpcClient::new_local_from_wire(ChanTx(out_tx), ChanRx(in_rx));
-    let negotiated = match futures::future::select(Box::pin(client.negotiate()), Box::pin(sleep_ms(NEGOTIATE_TIMEOUT_MS))).await {
+    let negotiated = match futures::future::select(
+        Box::pin(client.negotiate()),
+        Box::pin(sleep_ms(NEGOTIATE_TIMEOUT_MS)),
+    )
+    .await
+    {
         futures::future::Either::Left((result, _)) => Some(result),
         futures::future::Either::Right(_) => None,
     };
@@ -285,12 +313,18 @@ pub async fn connect_worker(worker: Worker) -> Result<(RpcClient, Capabilities),
         Some(Ok(caps)) => caps,
         Some(Err(e)) => {
             return Err(match dead.borrow().clone() {
-                Some(reason) => error("worker-crashed", format!("the probe-rs worker crashed: {reason}")),
+                Some(reason) => error(
+                    "worker-crashed",
+                    format!("the probe-rs worker crashed: {reason}"),
+                ),
                 None => client_err(e),
             });
         }
         None => {
-            return Err(error("transport", "the probe-rs worker did not answer the schema handshake"));
+            return Err(error(
+                "transport",
+                "the probe-rs worker did not answer the schema handshake",
+            ));
         }
     };
     Ok((client, caps))

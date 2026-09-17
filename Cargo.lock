@@ -1947,44 +1947,6 @@ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 [[package]]
 name = "probe-rs"
 version = "0.28.0"
-dependencies = [
- "anyhow",
- "async-io",
- "async-mutex",
- "async-trait",
- "bincode",
- "bitfield",
- "bitvec",
- "docsplay",
- "dunce",
- "espflash",
- "flate2",
- "futures-lite",
- "ihex",
- "itertools",
- "jep106",
- "nusb",
- "object 0.36.7",
- "parking_lot",
- "probe-rs-target 0.28.0",
- "rmp-serde",
- "scroll",
- "serde",
- "serde_yaml",
- "serialport",
- "thiserror 2.0.20",
- "tracing",
- "uf2-decode",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "web-time",
- "zerocopy",
-]
-
-[[package]]
-name = "probe-rs"
-version = "0.28.0"
 source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#0a3bcdc7fc7f66733371f3cf163adac6ea6f2981"
 dependencies = [
  "anyhow",
@@ -2005,7 +1967,7 @@ dependencies = [
  "nusb",
  "object 0.36.7",
  "parking_lot",
- "probe-rs-target 0.28.0 (git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7)",
+ "probe-rs-target",
  "rmp-serde",
  "scroll",
  "serde",
@@ -2034,8 +1996,8 @@ dependencies = [
  "object 0.36.7",
  "parse_int 0.9.0",
  "pollster",
- "probe-rs 0.28.0 (git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7)",
- "probe-rs-target 0.28.0 (git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7)",
+ "probe-rs",
+ "probe-rs-target",
  "serde",
  "thiserror 2.0.20",
  "tracing",
@@ -2045,22 +2007,6 @@ dependencies = [
 [[package]]
 name = "probe-rs-rpc"
 version = "0.1.0"
-dependencies = [
- "docsplay",
- "postcard",
- "postcard-rpc",
- "postcard-schema",
- "regex",
- "serde",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "probe-rs-rpc"
-version = "0.1.0"
 source = "git+https://github.com/beriberikix/probe-rs?branch=wasm-rpc-client#b33b226fcee05b812bf4feaa18e16f2ee5a6b72f"
 dependencies = [
  "docsplay",
@@ -2078,24 +2024,6 @@ dependencies = [
 [[package]]
 name = "probe-rs-rpc-client"
 version = "0.1.0"
-dependencies = [
- "docsplay",
- "futures-util",
- "gloo-timers",
- "postcard",
- "postcard-rpc",
- "postcard-schema",
- "probe-rs-rpc 0.1.0",
- "serde",
- "sha2 0.11.0",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "probe-rs-rpc-client"
-version = "0.1.0"
 source = "git+https://github.com/beriberikix/probe-rs?branch=wasm-rpc-client#b33b226fcee05b812bf4feaa18e16f2ee5a6b72f"
 dependencies = [
  "docsplay",
@@ -2104,24 +2032,12 @@ dependencies = [
  "postcard",
  "postcard-rpc",
  "postcard-schema",
- "probe-rs-rpc 0.1.0 (git+https://github.com/beriberikix/probe-rs?branch=wasm-rpc-client)",
+ "probe-rs-rpc",
  "serde",
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "probe-rs-target"
-version = "0.28.0"
-dependencies = [
- "base64 0.22.1",
- "indexmap",
- "jep106",
- "serde",
- "serde_with",
- "url",
 ]
 
 [[package]]
@@ -2148,8 +2064,8 @@ dependencies = [
  "js-sys",
  "object 0.40.0",
  "postcard-rpc",
- "probe-rs-rpc 0.1.0 (git+https://github.com/beriberikix/probe-rs?branch=wasm-rpc-client)",
- "probe-rs-rpc-client 0.1.0 (git+https://github.com/beriberikix/probe-rs?branch=wasm-rpc-client)",
+ "probe-rs-rpc",
+ "probe-rs-rpc-client",
  "serde",
  "serde-wasm-bindgen",
  "sha2 0.11.0",
@@ -2169,9 +2085,9 @@ dependencies = [
  "js-sys",
  "postcard",
  "postcard-rpc",
- "probe-rs 0.28.0 (git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7)",
+ "probe-rs",
  "probe-rs-debug",
- "probe-rs-rpc 0.1.0 (git+https://github.com/beriberikix/probe-rs?branch=wasm-rpc-client)",
+ "probe-rs-rpc",
  "svd-parser",
  "tokio",
  "tokio-util",
@@ -2549,8 +2465,8 @@ dependencies = [
  "futures",
  "js-sys",
  "postcard-rpc",
- "probe-rs-rpc 0.1.0",
- "probe-rs-rpc-client 0.1.0",
+ "probe-rs-rpc",
+ "probe-rs-rpc-client",
  "sha2 0.11.0",
  "tokio",
  "wasm-bindgen",
@@ -2564,7 +2480,7 @@ version = "0.0.0"
 dependencies = [
  "postcard-rpc",
  "postcard-schema",
- "probe-rs-rpc 0.1.0",
+ "probe-rs-rpc",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
@@ -2579,9 +2495,9 @@ dependencies = [
  "js-sys",
  "postcard",
  "postcard-rpc",
- "probe-rs 0.28.0",
- "probe-rs-rpc 0.1.0",
- "probe-rs-rpc-client 0.1.0",
+ "probe-rs",
+ "probe-rs-rpc",
+ "probe-rs-rpc-client",
  "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",

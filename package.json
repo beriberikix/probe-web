@@ -8,8 +8,9 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "test": "npm test --workspaces --if-present",
-    "test:e2e": "playwright test"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:workspaces": "npm test --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

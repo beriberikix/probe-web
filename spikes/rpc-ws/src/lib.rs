@@ -10,8 +10,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use base64::Engine;
 use postcard_rpc::server::{WireRxErrorKind, WireTxErrorKind};
-use probe_rs_rpc::transport::{Deframer, frame};
 use probe_rs_rpc::transport::memory::{PostcardReceiver, PostcardSender};
+use probe_rs_rpc::transport::{Deframer, frame};
 use probe_rs_rpc_client::RpcClient;
 use sha2::{Digest, Sha512};
 use tokio::sync::mpsc;
@@ -24,7 +24,9 @@ const CHALLENGE_FRAME_PROTOCOL: &str = "probe-rs.challenge-frame";
 struct ChanTx(mpsc::UnboundedSender<Vec<u8>>);
 impl PostcardSender for ChanTx {
     async fn send(&self, buf: Vec<u8>) -> Result<(), WireTxErrorKind> {
-        self.0.send(buf).map_err(|_| WireTxErrorKind::ConnectionClosed)
+        self.0
+            .send(buf)
+            .map_err(|_| WireTxErrorKind::ConnectionClosed)
     }
 }
 
@@ -42,7 +44,8 @@ fn log(s: &str) {
 /// Open the socket, complete the challenge handshake, and return a connected
 /// `RpcClient` whose schema has been verified against the server.
 async fn connect(url: &str, token: &str) -> Result<RpcClient, String> {
-    let ws = WebSocket::new_with_str(url, CHALLENGE_FRAME_PROTOCOL).map_err(|e| format!("{e:?}"))?;
+    let ws =
+        WebSocket::new_with_str(url, CHALLENGE_FRAME_PROTOCOL).map_err(|e| format!("{e:?}"))?;
     ws.set_binary_type(BinaryType::Arraybuffer);
 
     // Incoming: deframe into a channel the RPC client reads from.
@@ -82,7 +85,11 @@ async fn connect(url: &str, token: &str) -> Result<RpcClient, String> {
     let onclose = Closure::<dyn FnMut(CloseEvent)>::new({
         let open_tx = open_tx.clone();
         move |ev: CloseEvent| {
-            log(&format!("closed: code={} reason={:?}", ev.code(), ev.reason()));
+            log(&format!(
+                "closed: code={} reason={:?}",
+                ev.code(),
+                ev.reason()
+            ));
             if let Some(tx) = open_tx.borrow_mut().take() {
                 let _ = tx.send(Err(format!("closed before open: code {}", ev.code())));
             }
@@ -104,13 +111,20 @@ async fn connect(url: &str, token: &str) -> Result<RpcClient, String> {
     let mut in_rx = in_rx;
     let challenge = in_rx.recv().await.ok_or("closed before challenge")?;
     let challenge_str = String::from_utf8_lossy(&challenge).to_string();
-    log(&format!("challenge: {} bytes (b64 {} raw)", challenge.len(),
-        base64::engine::general_purpose::STANDARD.decode(&challenge_str).map(|v| v.len()).unwrap_or(0)));
+    log(&format!(
+        "challenge: {} bytes (b64 {} raw)",
+        challenge.len(),
+        base64::engine::general_purpose::STANDARD
+            .decode(&challenge_str)
+            .map(|v| v.len())
+            .unwrap_or(0)
+    ));
     let mut hasher = Sha512::new();
     hasher.update(challenge_str.as_bytes());
     hasher.update(token.as_bytes());
     let response = hasher.finalize().to_vec();
-    ws.send_with_u8_array(&frame(&response)).map_err(|e| format!("{e:?}"))?;
+    ws.send_with_u8_array(&frame(&response))
+        .map_err(|e| format!("{e:?}"))?;
 
     // Outgoing: drain the client's channel into the socket, framed.
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -140,9 +154,14 @@ async fn connect(url: &str, token: &str) -> Result<RpcClient, String> {
 pub async fn run(url: String, token: String) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
     let mut out = String::new();
-    let client = connect(&url, &token).await.map_err(|e| JsValue::from_str(&e))?;
+    let client = connect(&url, &token)
+        .await
+        .map_err(|e| JsValue::from_str(&e))?;
 
-    let probes = client.list_probes().await.map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let probes = client
+        .list_probes()
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
     out.push_str(&format!("probes: {}\n", probes.len()));
     for p in &probes {
         out.push_str(&format!("  {p}\n"));
@@ -153,7 +172,11 @@ pub async fn run(url: String, token: String) -> Result<String, JsValue> {
         .await
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
     out.push_str(&format!("chip families: {}\n", families.len()));
-    let mcx: Vec<_> = families.iter().filter(|f| f.name.contains("MCXA")).map(|f| f.name.clone()).collect();
+    let mcx: Vec<_> = families
+        .iter()
+        .filter(|f| f.name.contains("MCXA"))
+        .map(|f| f.name.clone())
+        .collect();
     out.push_str(&format!("  MCXA families: {mcx:?}\n"));
 
     out.push_str("SPIKE_A_RESULT=PASS\n");

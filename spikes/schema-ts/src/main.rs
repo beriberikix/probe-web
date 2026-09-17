@@ -25,7 +25,11 @@ fn ident(name: &str) -> String {
 
 /// Inline TS for a type reference; named structs/enums are emitted once and
 /// referenced by name.
-fn ts_ref(t: &NamedType, named: &mut BTreeMap<String, String>, seen: &mut BTreeSet<String>) -> String {
+fn ts_ref(
+    t: &NamedType,
+    named: &mut BTreeMap<String, String>,
+    seen: &mut BTreeSet<String>,
+) -> String {
     use DataModelType::*;
     match t.ty {
         Bool => "boolean".into(),
@@ -49,7 +53,11 @@ fn ts_ref(t: &NamedType, named: &mut BTreeMap<String, String>, seen: &mut BTreeS
             let parts: Vec<_> = items.iter().map(|i| ts_ref(i, named, seen)).collect();
             format!("[{}]", parts.join(", "))
         }
-        Map { key, val } => format!("Map<{}, {}>", ts_ref(key, named, seen), ts_ref(val, named, seen)),
+        Map { key, val } => format!(
+            "Map<{}, {}>",
+            ts_ref(key, named, seen),
+            ts_ref(val, named, seen)
+        ),
         Struct(fields) if t.name.contains('<') => {
             // Generic struct (e.g. `Key<T>`): inline, since every instantiation
             // shares the same reported name.
@@ -61,7 +69,10 @@ fn ts_ref(t: &NamedType, named: &mut BTreeMap<String, String>, seen: &mut BTreeS
         }
         Enum(variants) if t.name.contains('<') => {
             // Generic enum (e.g. `Result<T, E>`): inline union.
-            let alts: Vec<_> = variants.iter().map(|v| variant_ts(v.name, v.ty, named, seen)).collect();
+            let alts: Vec<_> = variants
+                .iter()
+                .map(|v| variant_ts(v.name, v.ty, named, seen))
+                .collect();
             format!("({})", alts.join(" | "))
         }
         Struct(_) | Enum(_) => {
@@ -80,9 +91,13 @@ fn variant_ts(
 ) -> String {
     match v {
         DataModelVariant::UnitVariant => format!("\"{name}\""),
-        DataModelVariant::NewtypeVariant(inner) => format!("{{ {name}: {} }}", ts_ref(inner, named, seen)),
+        DataModelVariant::NewtypeVariant(inner) => {
+            format!("{{ {name}: {} }}", ts_ref(inner, named, seen))
+        }
         // A one-element tuple variant serializes like a newtype variant.
-        DataModelVariant::TupleVariant([single]) => format!("{{ {name}: {} }}", ts_ref(single, named, seen)),
+        DataModelVariant::TupleVariant([single]) => {
+            format!("{{ {name}: {} }}", ts_ref(single, named, seen))
+        }
         DataModelVariant::TupleVariant(items) => {
             let parts: Vec<_> = items.iter().map(|i| ts_ref(i, named, seen)).collect();
             format!("{{ {name}: [{}] }}", parts.join(", "))
@@ -109,10 +124,14 @@ const RENAME_ALL: &[(&str, &str)] = &[
 /// Recursive fields. postcard-schema cannot express recursion, so probe-rs-rpc's
 /// hand-written `Schema` impls stand in a placeholder (`Vec<()>` for
 /// `ComponentTreeNode::children`); emit the real self-reference instead.
-const RECURSIVE: &[(&str, &str, &str)] = &[("ComponentTreeNode", "children", "Array<ComponentTreeNode>")];
+const RECURSIVE: &[(&str, &str, &str)] =
+    &[("ComponentTreeNode", "children", "Array<ComponentTreeNode>")];
 
 fn recursive_field(ty: &str, field: &str) -> Option<&'static str> {
-    RECURSIVE.iter().find(|(t, f, _)| *t == ty && *f == field).map(|(_, _, ts)| *ts)
+    RECURSIVE
+        .iter()
+        .find(|(t, f, _)| *t == ty && *f == field)
+        .map(|(_, _, ts)| *ts)
 }
 
 fn rename(ty: &str, name: &str) -> String {
@@ -159,7 +178,10 @@ fn define(t: &NamedType, named: &mut BTreeMap<String, String>, seen: &mut BTreeS
         // serde's externally tagged enum representation (what serde-wasm-bindgen
         // and serde_json produce): unit → "Name", others → { Name: payload }.
         Enum(variants) => {
-            let alts: Vec<_> = variants.iter().map(|v| variant_ts(&rename(t.name, v.name), v.ty, named, seen)).collect();
+            let alts: Vec<_> = variants
+                .iter()
+                .map(|v| variant_ts(&rename(t.name, v.name), v.ty, named, seen))
+                .collect();
             format!("export type {id} =\n  | {};", alts.join("\n  | "))
         }
         NewtypeStruct(inner) => format!("export type {id} = {};", ts_ref(inner, named, seen)),
@@ -173,7 +195,6 @@ fn main() {
     let mut seen = BTreeSet::new();
     let mut endpoints = vec![];
     let mut topics = vec![];
-
 
     // Simpler and exact: emit every named type, then list endpoint paths with
     // their keys. The client already dispatches by key; the JS SDK needs the
@@ -198,30 +219,85 @@ fn main() {
     }
     use postcard_schema::Schema;
     ep!(
-        ListProbesEndpoint, SelectProbeEndpoint, AttachEndpoint,
-        HaltCoresEndpoint, ResumeCoresEndpoint, CoresStatusEndpoint,
-        NewFlashLoaderEndpoint, BuildEndpoint, LoadRegionEndpoint, FlashEndpoint, EraseAllEndpoint,
-        EraseRangeEndpoint, VerifyEndpoint, BootEndpoint, MonitorEndpoint,
-        TakeStackTraceEndpoint, TakeRichStackTraceEndpoint, ScopesEndpoint, VariablesEndpoint,
-        EvaluateEndpoint, SetVariableEndpoint,
-        LoadDebugInfoEndpoint, ResolveSourceBreakpointsEndpoint, ResolveSourceLocationsEndpoint,
-        ClearCoreDebugStateEndpoint, LoadSvdEndpoint,
-        CreateRttClientEndpoint, RttDownEndpoint, GetRttChannelsEndpoint, PollRttUpEndpoint,
-        CleanUpRttEndpoint, ClearRttControlBlockEndpoint,
-        ListTestsEndpoint, RunTestEndpoint, TestKickoffEndpoint,
-        CreateTempFileEndpoint, TempFileDataEndpoint,
-        ListChipFamiliesEndpoint, ChipInfoEndpoint, LoadChipFamilyEndpoint,
-        TargetMetadataEndpoint, TargetInfoEndpoint, ResetCoreEndpoint, ResetCoreAndHaltEndpoint,
-        CoreStatusEndpoint, CoreHaltEndpoint, CoreRunEndpoint, CoreStepEndpoint, CoreWriteRegEndpoint,
-        CoreSetHwBpsEndpoint, CoreClearHwBpsEndpoint, CoreEnableVcEndpoint, CoreMetadataEndpoint,
-        CoreReadRegistersEndpoint, CoreDumpEndpoint, HandleSemihostingEndpoint, DisassembleEndpoint,
-        ReadMemory8Endpoint, ReadMemory16Endpoint, ReadMemory32Endpoint, ReadMemory64Endpoint, ReadBytesEndpoint,
-        WriteMemory8Endpoint, WriteMemory16Endpoint, WriteMemory32Endpoint, WriteMemory64Endpoint,
+        ListProbesEndpoint,
+        SelectProbeEndpoint,
+        AttachEndpoint,
+        HaltCoresEndpoint,
+        ResumeCoresEndpoint,
+        CoresStatusEndpoint,
+        NewFlashLoaderEndpoint,
+        BuildEndpoint,
+        LoadRegionEndpoint,
+        FlashEndpoint,
+        EraseAllEndpoint,
+        EraseRangeEndpoint,
+        VerifyEndpoint,
+        BootEndpoint,
+        MonitorEndpoint,
+        TakeStackTraceEndpoint,
+        TakeRichStackTraceEndpoint,
+        ScopesEndpoint,
+        VariablesEndpoint,
+        EvaluateEndpoint,
+        SetVariableEndpoint,
+        LoadDebugInfoEndpoint,
+        ResolveSourceBreakpointsEndpoint,
+        ResolveSourceLocationsEndpoint,
+        ClearCoreDebugStateEndpoint,
+        LoadSvdEndpoint,
+        CreateRttClientEndpoint,
+        RttDownEndpoint,
+        GetRttChannelsEndpoint,
+        PollRttUpEndpoint,
+        CleanUpRttEndpoint,
+        ClearRttControlBlockEndpoint,
+        ListTestsEndpoint,
+        RunTestEndpoint,
+        TestKickoffEndpoint,
+        CreateTempFileEndpoint,
+        TempFileDataEndpoint,
+        ListChipFamiliesEndpoint,
+        ChipInfoEndpoint,
+        LoadChipFamilyEndpoint,
+        TargetMetadataEndpoint,
+        TargetInfoEndpoint,
+        ResetCoreEndpoint,
+        ResetCoreAndHaltEndpoint,
+        CoreStatusEndpoint,
+        CoreHaltEndpoint,
+        CoreRunEndpoint,
+        CoreStepEndpoint,
+        CoreWriteRegEndpoint,
+        CoreSetHwBpsEndpoint,
+        CoreClearHwBpsEndpoint,
+        CoreEnableVcEndpoint,
+        CoreMetadataEndpoint,
+        CoreReadRegistersEndpoint,
+        CoreDumpEndpoint,
+        HandleSemihostingEndpoint,
+        DisassembleEndpoint,
+        ReadMemory8Endpoint,
+        ReadMemory16Endpoint,
+        ReadMemory32Endpoint,
+        ReadMemory64Endpoint,
+        ReadBytesEndpoint,
+        WriteMemory8Endpoint,
+        WriteMemory16Endpoint,
+        WriteMemory32Endpoint,
+        WriteMemory64Endpoint,
     );
-    tp!(CancelTopic, TargetInfoDataTopic, ProgressEventTopic, RttTopic, SemihostingTopic);
+    tp!(
+        CancelTopic,
+        TargetInfoDataTopic,
+        ProgressEventTopic,
+        RttTopic,
+        SemihostingTopic
+    );
 
     println!("// Generated from probe-rs-rpc's postcard-schema by spike-schema-ts. Do not edit.");
-    println!("// Boundary contract (serde-wasm-bindgen): externally tagged enums; u64/i64 as bigint\n// (serialize_large_number_types_as_bigints); None/unit as null (serialize_missing_as_null);\n// Vec<u8> as Array<number>.\n");
+    println!(
+        "// Boundary contract (serde-wasm-bindgen): externally tagged enums; u64/i64 as bigint\n// (serialize_large_number_types_as_bigints); None/unit as null (serialize_missing_as_null);\n// Vec<u8> as Array<number>.\n"
+    );
     for body in named.values() {
         println!("{body}\n");
     }
@@ -234,5 +310,10 @@ fn main() {
         println!("  \"{path}\": {msg};");
     }
     println!("}}");
-    eprintln!("types: {}, endpoints: {}, topics: {}", named.len(), endpoints.len(), topics.len());
+    eprintln!(
+        "types: {}, endpoints: {}, topics: {}",
+        named.len(),
+        endpoints.len(),
+        topics.len()
+    );
 }

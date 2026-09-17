@@ -14,20 +14,22 @@ use probe_rs_debug::{
 };
 use probe_rs_rpc::{
     RpcResult,
-    core_ops::{WireRegisterId, WireRegisterValue},
     breakpoints::{
         BreakpointResolution, ResolveSourceBreakpointsRequest, ResolveSourceBreakpointsResponse,
-        ResolveSourceLocationsRequest, ResolveSourceLocationsResponse, WireColumn, WireSourceLocation,
-        WireVerifiedBreakpoint,
+        ResolveSourceLocationsRequest, ResolveSourceLocationsResponse, WireColumn,
+        WireSourceLocation, WireVerifiedBreakpoint,
     },
+    core_ops::{WireRegisterId, WireRegisterValue},
     debug_vars::{
-        ClearCoreDebugStateRequest, EvaluateRequest, EvaluateResponse, LoadSvdRequest, LoadSvdResponse, ScopesRequest,
-        ScopesResponse, SetVariableRequest, SetVariableResult, VariablesRequest, VariablesResponse, WireEvaluateResponse,
-        WireScope, WireSetVariableResponse, WireVariable,
+        ClearCoreDebugStateRequest, EvaluateRequest, EvaluateResponse, LoadSvdRequest,
+        LoadSvdResponse, ScopesRequest, ScopesResponse, SetVariableRequest, SetVariableResult,
+        VariablesRequest, VariablesResponse, WireEvaluateResponse, WireScope,
+        WireSetVariableResponse, WireVariable,
     },
     stack_trace::{
-        LoadDebugInfoRequest, LoadDebugInfoResponse, RichStackTrace, RichStackTraceFrame, RichStackTraces,
-        SourceLocation, TakeRichStackTraceRequest, TakeRichStackTraceResponse, WireDebugRegister,
+        LoadDebugInfoRequest, LoadDebugInfoResponse, RichStackTrace, RichStackTraceFrame,
+        RichStackTraces, SourceLocation, TakeRichStackTraceRequest, TakeRichStackTraceResponse,
+        WireDebugRegister,
     },
 };
 
@@ -92,27 +94,48 @@ fn wire_debug_register(r: &DebugRegister) -> WireDebugRegister {
 
 /// `debug_state/load_debug_info`: parse the ELF uploaded as a temp file (the worker has no file
 /// system). Parsing finishes before the old state is replaced, so a bad file leaves it intact.
-pub async fn load_debug_info(ctx: &mut Ctx, _h: VarHeader, req: LoadDebugInfoRequest) -> LoadDebugInfoResponse {
+pub async fn load_debug_info(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: LoadDebugInfoRequest,
+) -> LoadDebugInfoResponse {
     let mut inner = ctx.inner.lock().await;
     inner.session(req.sessid)?;
-    let bytes = inner.files.get(&req.path).ok_or_else(|| err(format!("unknown file {}", req.path)))?;
+    let bytes = inner
+        .files
+        .get(&req.path)
+        .ok_or_else(|| err(format!("unknown file {}", req.path)))?;
     let started = web_time::Instant::now();
     let debug_info = DebugInfo::from_raw(bytes).map_err(err)?;
-    tracing::info!("parsed debug info ({} bytes) in {:?}", bytes.len(), started.elapsed());
-    inner.debug.entry(req.sessid.id()).or_default().replace_debug_info(debug_info);
+    tracing::info!(
+        "parsed debug info ({} bytes) in {:?}",
+        bytes.len(),
+        started.elapsed()
+    );
+    inner
+        .debug
+        .entry(req.sessid.id())
+        .or_default()
+        .replace_debug_info(debug_info);
     Ok(())
 }
 
 /// `stack_trace/rich`: unwind each (or the requested) core with the session's DWARF and keep the
 /// frames and static scope for `scopes`/`variables`.
-pub async fn take_rich_stack_trace(ctx: &mut Ctx, _h: VarHeader, req: TakeRichStackTraceRequest) -> TakeRichStackTraceResponse {
+pub async fn take_rich_stack_trace(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: TakeRichStackTraceRequest,
+) -> TakeRichStackTraceResponse {
     let mut guard = ctx.inner.lock().await;
     let inner = &mut *guard;
     let debug_info = inner
         .debug
         .get(&req.sessid.id())
         .and_then(|state| state.debug_info.clone())
-        .ok_or_else(|| err("no debug info loaded for this session (debug_state/load_debug_info)"))?;
+        .ok_or_else(|| {
+            err("no debug info loaded for this session (debug_state/load_debug_info)")
+        })?;
     let session = inner.session(req.sessid)?;
     let limit = req.stack_frame_limit as usize;
 
@@ -134,7 +157,13 @@ pub async fn take_rich_stack_trace(ctx: &mut Ctx, _h: VarHeader, req: TakeRichSt
                 // Always bounded: the fork's unwinder can loop on some stacks (seen on the ESP32-S3).
                 let limit = if limit == 0 { 100 } else { limit };
                 let frames = debug_info
-                    .unwind_with_limit(&mut core, registers, exception_handler.as_ref(), instruction_set, limit)
+                    .unwind_with_limit(
+                        &mut core,
+                        registers,
+                        exception_handler.as_ref(),
+                        instruction_set,
+                        limit,
+                    )
                     .await?;
                 cores.push((idx as u32, frames, debug_info.create_static_scope_cache()));
             }
@@ -264,18 +293,31 @@ pub async fn scopes(ctx: &mut Ctx, _h: VarHeader, req: ScopesRequest) -> ScopesR
 pub async fn variables(ctx: &mut Ctx, _h: VarHeader, req: VariablesRequest) -> VariablesResponse {
     let mut guard = ctx.inner.lock().await;
     let inner = &mut *guard;
-    let state = inner.debug.get_mut(&req.sessid.id()).ok_or_else(|| err("no debug state for this session"))?;
-    let debug_info = state.debug_info.clone().ok_or_else(|| err("no debug info loaded for this session"))?;
+    let state = inner
+        .debug
+        .get_mut(&req.sessid.id())
+        .ok_or_else(|| err("no debug state for this session"))?;
+    let debug_info = state
+        .debug_info
+        .clone()
+        .ok_or_else(|| err("no debug info loaded for this session"))?;
     let core_state = state
         .per_core
         .get_mut(&(req.core as usize))
         .ok_or_else(|| err("no stack trace for this core (stack_trace/rich)"))?;
-    let session = inner.sessions.get_mut(&req.sessid.id()).ok_or_else(|| err("unknown session"))?;
+    let session = inner
+        .sessions
+        .get_mut(&req.sessid.id())
+        .ok_or_else(|| err("unknown session"))?;
     let mut core = session.core(req.core as usize).await.map_err(err)?;
     let variable_ref = ObjectRef::from(req.variables_reference as i64);
 
     // A frame id: its registers.
-    if let Some(frame) = core_state.stack_frames.iter().find(|f| f.id == variable_ref) {
+    if let Some(frame) = core_state
+        .stack_frames
+        .iter()
+        .find(|f| f.id == variable_ref)
+    {
         return Ok(frame
             .registers
             .0
@@ -315,7 +357,10 @@ pub async fn variables(ctx: &mut Ctx, _h: VarHeader, req: VariablesRequest) -> V
     }
 
     // Statics resolve against the innermost frame's registers; locals against their own frame's.
-    let top_registers = core_state.stack_frames.first().map(|f| (f.registers.clone(), f.frame_base, f.canonical_frame_address));
+    let top_registers = core_state
+        .stack_frames
+        .first()
+        .map(|f| (f.registers.clone(), f.frame_base, f.canonical_frame_address));
     let mut parent: Option<Variable> = None;
     let mut cache: Option<&mut VariableCache> = None;
     let mut frame_info: Option<(DebugRegisters, Option<u64>, Option<u64>)> = None;
@@ -328,7 +373,11 @@ pub async fn variables(ctx: &mut Ctx, _h: VarHeader, req: VariablesRequest) -> V
     }
     if parent.is_none() {
         for frame in core_state.stack_frames.iter_mut() {
-            let registers = (frame.registers.clone(), frame.frame_base, frame.canonical_frame_address);
+            let registers = (
+                frame.registers.clone(),
+                frame.frame_base,
+                frame.canonical_frame_address,
+            );
             if let Some(locals) = frame.local_variables.as_mut()
                 && let Some(variable) = locals.get_variable_by_key(variable_ref)
             {
@@ -339,15 +388,27 @@ pub async fn variables(ctx: &mut Ctx, _h: VarHeader, req: VariablesRequest) -> V
             }
         }
     }
-    let cache = cache.ok_or_else(|| err(format!("No variable information found for {}!", req.variables_reference)))?;
+    let cache = cache.ok_or_else(|| {
+        err(format!(
+            "No variable information found for {}!",
+            req.variables_reference
+        ))
+    })?;
 
     if let Some(parent) = parent.as_mut()
         && parent.variable_node_type.is_deferred()
         && !cache.has_children(parent)
         && let Some((registers, frame_base, canonical_frame_address)) = &frame_info
     {
-        let info = StackFrameInfo { registers, frame_base: *frame_base, canonical_frame_address: *canonical_frame_address };
-        debug_info.cache_deferred_variables(cache, &mut core, parent, info).await.map_err(err)?;
+        let info = StackFrameInfo {
+            registers,
+            frame_base: *frame_base,
+            canonical_frame_address: *canonical_frame_address,
+        };
+        debug_info
+            .cache_deferred_variables(cache, &mut core, parent, info)
+            .await
+            .map_err(err)?;
     }
 
     let filter = req.filter.as_deref();
@@ -376,9 +437,17 @@ pub async fn variables(ctx: &mut Ctx, _h: VarHeader, req: VariablesRequest) -> V
 }
 
 /// `debug_state/clear_core`: forget a core's frames and variable caches (called before resuming).
-pub async fn clear_core(ctx: &mut Ctx, _h: VarHeader, req: ClearCoreDebugStateRequest) -> RpcResult<()> {
+pub async fn clear_core(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: ClearCoreDebugStateRequest,
+) -> RpcResult<()> {
     let mut inner = ctx.inner.lock().await;
-    if let Some(core) = inner.debug.get_mut(&req.sessid.id()).and_then(|s| s.per_core.get_mut(&(req.core as usize))) {
+    if let Some(core) = inner
+        .debug
+        .get_mut(&req.sessid.id())
+        .and_then(|s| s.per_core.get_mut(&(req.core as usize)))
+    {
         core.stack_frames.clear();
         core.static_variables = None;
     }
@@ -401,38 +470,75 @@ fn wire_breakpoint_location(location: &probe_rs_debug::SourceLocation) -> WireSo
 
 /// `debug_state/resolve_source_breakpoints`: the address probe-rs would halt at for each
 /// `path:line[:column]` (paths may be a suffix of the DWARF path), or why there is none.
-pub async fn resolve_source_breakpoints(ctx: &mut Ctx, _h: VarHeader, req: ResolveSourceBreakpointsRequest) -> ResolveSourceBreakpointsResponse {
+pub async fn resolve_source_breakpoints(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: ResolveSourceBreakpointsRequest,
+) -> ResolveSourceBreakpointsResponse {
     let inner = ctx.inner.lock().await;
-    let Some(debug_info) = inner.debug.get(&req.sessid.id()).and_then(|s| s.debug_info.clone()) else {
+    let Some(debug_info) = inner
+        .debug
+        .get(&req.sessid.id())
+        .and_then(|s| s.debug_info.clone())
+    else {
         return Ok(req
             .locations
             .into_iter()
-            .map(|_| BreakpointResolution { breakpoint: None, error: Some("No debug information is loaded for this session.".into()) })
+            .map(|_| BreakpointResolution {
+                breakpoint: None,
+                error: Some("No debug information is loaded for this session.".into()),
+            })
             .collect());
     };
     Ok(req
         .locations
         .into_iter()
-        .map(|location| match debug_info.get_breakpoint_location(typed_path::TypedPath::derive(location.path.as_bytes()), location.line, location.column) {
-            Ok(breakpoint) => BreakpointResolution {
-                breakpoint: Some(WireVerifiedBreakpoint {
-                    address: breakpoint.address,
-                    source_location: wire_breakpoint_location(&breakpoint.source_location),
-                }),
-                error: None,
-            },
-            Err(error) => BreakpointResolution { breakpoint: None, error: Some(error.to_string()) },
+        .map(|location| {
+            match debug_info.get_breakpoint_location(
+                typed_path::TypedPath::derive(location.path.as_bytes()),
+                location.line,
+                location.column,
+            ) {
+                Ok(breakpoint) => BreakpointResolution {
+                    breakpoint: Some(WireVerifiedBreakpoint {
+                        address: breakpoint.address,
+                        source_location: wire_breakpoint_location(&breakpoint.source_location),
+                    }),
+                    error: None,
+                },
+                Err(error) => BreakpointResolution {
+                    breakpoint: None,
+                    error: Some(error.to_string()),
+                },
+            }
         })
         .collect())
 }
 
 /// `debug_state/resolve_source_locations`: the source line of each address, when DWARF has one.
-pub async fn resolve_source_locations(ctx: &mut Ctx, _h: VarHeader, req: ResolveSourceLocationsRequest) -> ResolveSourceLocationsResponse {
+pub async fn resolve_source_locations(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: ResolveSourceLocationsRequest,
+) -> ResolveSourceLocationsResponse {
     let inner = ctx.inner.lock().await;
-    let Some(debug_info) = inner.debug.get(&req.sessid.id()).and_then(|s| s.debug_info.clone()) else {
+    let Some(debug_info) = inner
+        .debug
+        .get(&req.sessid.id())
+        .and_then(|s| s.debug_info.clone())
+    else {
         return Ok(req.addresses.iter().map(|_| None).collect());
     };
-    Ok(req.addresses.into_iter().map(|address| debug_info.get_source_location(address).as_ref().map(wire_breakpoint_location)).collect())
+    Ok(req
+        .addresses
+        .into_iter()
+        .map(|address| {
+            debug_info
+                .get_source_location(address)
+                .as_ref()
+                .map(wire_breakpoint_location)
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------- evaluate, set_variable, SVD
@@ -444,12 +550,21 @@ pub async fn load_svd(ctx: &mut Ctx, _h: VarHeader, req: LoadSvdRequest) -> Load
     inner.session(req.sessid)?;
     let parsed = match &req.path {
         Some(path) => {
-            let bytes = inner.files.get(path).ok_or_else(|| err(format!("unknown file {path}")))?;
+            let bytes = inner
+                .files
+                .get(path)
+                .ok_or_else(|| err(format!("unknown file {path}")))?;
             Some(crate::svd::parse_svd_bytes(bytes, path))
         }
         None => None,
     };
-    let core_state = inner.debug.entry(req.sessid.id()).or_default().per_core.entry(req.core as usize).or_default();
+    let core_state = inner
+        .debug
+        .entry(req.sessid.id())
+        .or_default()
+        .per_core
+        .entry(req.core as usize)
+        .or_default();
     match parsed {
         None => {
             core_state.svd_variables = None;
@@ -471,13 +586,22 @@ pub async fn load_svd(ctx: &mut Ctx, _h: VarHeader, req: LoadSvdRequest) -> Load
 pub async fn evaluate(ctx: &mut Ctx, _h: VarHeader, req: EvaluateRequest) -> EvaluateResponse {
     let mut guard = ctx.inner.lock().await;
     let inner = &mut *guard;
-    let state = inner.debug.get_mut(&req.sessid.id()).ok_or_else(|| err("no debug state for this session"))?;
-    let debug_info = state.debug_info.clone().ok_or_else(|| err("no debug info loaded for this session"))?;
+    let state = inner
+        .debug
+        .get_mut(&req.sessid.id())
+        .ok_or_else(|| err("no debug state for this session"))?;
+    let debug_info = state
+        .debug_info
+        .clone()
+        .ok_or_else(|| err("no debug info loaded for this session"))?;
     let core_state = state
         .per_core
         .get_mut(&(req.core as usize))
         .ok_or_else(|| err("no stack trace for this core (stack_trace/rich)"))?;
-    let session = inner.sessions.get_mut(&req.sessid.id()).ok_or_else(|| err("unknown session"))?;
+    let session = inner
+        .sessions
+        .get_mut(&req.sessid.id())
+        .ok_or_else(|| err("unknown session"))?;
     let mut core = session.core(req.core as usize).await.map_err(err)?;
 
     let invalid = || WireEvaluateResponse {
@@ -490,9 +614,17 @@ pub async fn evaluate(ctx: &mut Ctx, _h: VarHeader, req: EvaluateRequest) -> Eva
     };
     let frame_ref = match req.frame_id {
         Some(id) => ObjectRef::from(id as i64),
-        None => core_state.stack_frames.first().map(|f| f.id).unwrap_or(ObjectRef::Invalid),
+        None => core_state
+            .stack_frames
+            .first()
+            .map(|f| f.id)
+            .unwrap_or(ObjectRef::Invalid),
     };
-    let Some(frame_index) = core_state.stack_frames.iter().position(|f| f.id == frame_ref) else {
+    let Some(frame_index) = core_state
+        .stack_frames
+        .iter()
+        .position(|f| f.id == frame_ref)
+    else {
         return Ok(invalid());
     };
 
@@ -512,9 +644,22 @@ pub async fn evaluate(ctx: &mut Ctx, _h: VarHeader, req: EvaluateRequest) -> Eva
     }
 
     let frame = &core_state.stack_frames[frame_index];
-    let frame_registers = (frame.registers.clone(), frame.frame_base, frame.canonical_frame_address);
-    if let Some(cache) = core_state.stack_frames[frame_index].local_variables.as_mut()
-        && let Some(response) = resolve_expression(&debug_info, &mut core, cache, &req.expression, &frame_registers).await
+    let frame_registers = (
+        frame.registers.clone(),
+        frame.frame_base,
+        frame.canonical_frame_address,
+    );
+    if let Some(cache) = core_state.stack_frames[frame_index]
+        .local_variables
+        .as_mut()
+        && let Some(response) = resolve_expression(
+            &debug_info,
+            &mut core,
+            cache,
+            &req.expression,
+            &frame_registers,
+        )
+        .await
     {
         return Ok(response);
     }
@@ -524,7 +669,8 @@ pub async fn evaluate(ctx: &mut Ctx, _h: VarHeader, req: EvaluateRequest) -> Eva
         .map(|f| (f.registers.clone(), f.frame_base, f.canonical_frame_address))
         .unwrap_or((DebugRegisters::default(), None, None));
     if let Some(cache) = core_state.static_variables.as_mut()
-        && let Some(response) = resolve_expression(&debug_info, &mut core, cache, &req.expression, &top).await
+        && let Some(response) =
+            resolve_expression(&debug_info, &mut core, cache, &req.expression, &top).await
     {
         return Ok(response);
     }
@@ -543,8 +689,15 @@ async fn resolve_expression(
     if cache.len() == 1 {
         let mut root = cache.root_variable().clone();
         if root.variable_node_type.is_deferred() && !cache.has_children(&root) {
-            let info = StackFrameInfo { registers, frame_base: *frame_base, canonical_frame_address: *canonical_frame_address };
-            debug_info.cache_deferred_variables(cache, core, &mut root, info).await.ok()?;
+            let info = StackFrameInfo {
+                registers,
+                frame_base: *frame_base,
+                canonical_frame_address: *canonical_frame_address,
+            };
+            debug_info
+                .cache_deferred_variables(cache, core, &mut root, info)
+                .await
+                .ok()?;
         }
     }
     let mut variable = match expression.parse::<i64>() {
@@ -565,7 +718,11 @@ async fn resolve_expression(
 }
 
 /// `stack_trace/set_variable`: write a local or static variable (found by parent key and name).
-pub async fn set_variable(ctx: &mut Ctx, _h: VarHeader, req: SetVariableRequest) -> SetVariableResult {
+pub async fn set_variable(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: SetVariableRequest,
+) -> SetVariableResult {
     let mut guard = ctx.inner.lock().await;
     let inner = &mut *guard;
     let core_state = inner
@@ -573,7 +730,10 @@ pub async fn set_variable(ctx: &mut Ctx, _h: VarHeader, req: SetVariableRequest)
         .get_mut(&req.sessid.id())
         .and_then(|s| s.per_core.get_mut(&(req.core as usize)))
         .ok_or_else(|| err("no stack trace for this core (stack_trace/rich)"))?;
-    let session = inner.sessions.get_mut(&req.sessid.id()).ok_or_else(|| err("unknown session"))?;
+    let session = inner
+        .sessions
+        .get_mut(&req.sessid.id())
+        .ok_or_else(|| err("unknown session"))?;
     let mut core = session.core(req.core as usize).await.map_err(err)?;
 
     let parent_key = ObjectRef::from(req.parent_key);
@@ -596,7 +756,10 @@ pub async fn set_variable(ctx: &mut Ctx, _h: VarHeader, req: SetVariableRequest)
     let Some((variable, cache)) = found else {
         return Err(err(format!("No variable information found for {name}!")));
     };
-    variable.update_value(&mut core, cache, req.value.clone()).await.map_err(err)?;
+    variable
+        .update_value(&mut core, cache, req.value.clone())
+        .await
+        .map_err(err)?;
     let (reference, named, indexed) = variable_reference(&variable, cache);
     Ok(WireSetVariableResponse {
         value: req.value,
@@ -607,4 +770,3 @@ pub async fn set_variable(ctx: &mut Ctx, _h: VarHeader, req: SetVariableRequest)
         memory_reference: memory_reference(&variable.memory_location),
     })
 }
-

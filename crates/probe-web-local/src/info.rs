@@ -22,7 +22,9 @@ use probe_rs::{
             sequences::DefaultArmSequence,
         },
         riscv::communication_interface::RiscvCommunicationInterface,
-        xtensa::communication_interface::{XtensaCommunicationInterface, XtensaDebugInterfaceState},
+        xtensa::communication_interface::{
+            XtensaCommunicationInterface, XtensaDebugInterfaceState,
+        },
     },
     probe::{Probe, WireProtocol as ProbeRsWireProtocol},
 };
@@ -30,8 +32,8 @@ use probe_rs_rpc::{
     TargetInfoDataTopic,
     chip::JEP106Code,
     info::{
-        ApInfo, ComponentTreeNode, DebugPortId, DebugPortInfo, DebugPortInfoNode, DebugPortVersion, DpAddress,
-        FullyQualifiedApAddress, InfoEvent, MinDpSupport,
+        ApInfo, ComponentTreeNode, DebugPortId, DebugPortInfo, DebugPortInfoNode, DebugPortVersion,
+        DpAddress, FullyQualifiedApAddress, InfoEvent, MinDpSupport,
     },
     probe::WireProtocol,
 };
@@ -43,8 +45,15 @@ pub struct InfoCtx<'a> {
 }
 
 impl InfoCtx<'_> {
-    async fn publish<T: postcard_rpc::Topic<Message = InfoEvent>>(&mut self, seq: VarSeq, msg: &InfoEvent) -> anyhow::Result<()> {
-        self.sender.publish::<T>(seq, msg).await.map_err(|_| anyhow!("client disconnected"))
+    async fn publish<T: postcard_rpc::Topic<Message = InfoEvent>>(
+        &mut self,
+        seq: VarSeq,
+        msg: &InfoEvent,
+    ) -> anyhow::Result<()> {
+        self.sender
+            .publish::<T>(seq, msg)
+            .await
+            .map_err(|_| anyhow!("client disconnected"))
     }
 }
 
@@ -77,7 +86,10 @@ fn dp_id(id: &dp::DebugPortId) -> DebugPortId {
             dp::MinDpSupport::NotImplemented => MinDpSupport::NotImplemented,
             dp::MinDpSupport::Implemented => MinDpSupport::Implemented,
         },
-        designer: JEP106Code { id: id.designer.id, cc: id.designer.cc },
+        designer: JEP106Code {
+            id: id.designer.id,
+            cc: id.designer.cc,
+        },
     }
 }
 
@@ -97,7 +109,10 @@ pub async fn show_info(
             Some(jtag) => {
                 let elements: Vec<probe_rs::config::ScanChainElement> = scan_chain
                     .iter()
-                    .map(|&ir_len| probe_rs::config::ScanChainElement { name: None, ir_len: Some(ir_len) })
+                    .map(|&ir_len| probe_rs::config::ScanChainElement {
+                        name: None,
+                        ir_len: Some(ir_len),
+                    })
                     .collect();
                 jtag.set_scan_chain(&elements)?;
             }
@@ -113,7 +128,9 @@ pub async fn show_info(
     if let Err(e) = try_show_info(ctx, probe, protocol, connect_under_reset, target_sel).await {
         ctx.publish::<TargetInfoDataTopic>(
             VarSeq::Seq2(0),
-            &InfoEvent::Message(format!("Failed to identify target using protocol {protocol}: {e:?}")),
+            &InfoEvent::Message(format!(
+                "Failed to identify target using protocol {protocol}: {e:?}"
+            )),
         )
         .await?;
     }
@@ -127,9 +144,7 @@ async fn try_show_info(
     connect_under_reset: bool,
     target_sel: Option<u32>,
 ) -> anyhow::Result<()> {
-    probe
-        .select_protocol(wire_protocol(protocol))
-        .await?;
+    probe.select_protocol(wire_protocol(protocol)).await?;
 
     if connect_under_reset {
         probe.attach_to_unspecified_under_reset().await?;

@@ -11,6 +11,6 @@ crate-type = ["cdylib", "rlib"]
 serde = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 wasm-bindgen = { workspace = true }
-probe-rs-rpc = { path = "../../../prs-wasm-rpc/probe-rs-rpc" }
+probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 postcard-rpc = { version = "0.12", features = ["use-std"] }
 postcard-schema = { version = "0.2", features = ["use-std", "derive"] }
