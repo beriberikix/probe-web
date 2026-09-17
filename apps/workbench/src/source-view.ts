@@ -29,6 +29,10 @@ export class SourceView {
   private models = new Map<string, monaco.editor.ITextModel>();
   /** DWARF path of the file shown. */
   path: string | null = null;
+  /** Text of the file shown (the checks assert real source, not a server's 404 page). */
+  get text(): string {
+    return this.editor.getModel()?.getValue() ?? '';
+  }
   pcLine: number | null = null;
   onToggleBreakpoint: (path: string, line: number) => void = () => {};
   sources: SourceProvider | null = null;

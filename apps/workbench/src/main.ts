@@ -201,7 +201,8 @@ function firstOf(...providers: SourceProvider[]): SourceProvider {
 // folder picked with Sources….
 let sources: SourceProvider = firstOf(
   new UrlSourceProvider({
-    base: new URL('firmware/src/', document.baseURI).href,
+    // One level up: this app is served from <site>/workbench/, the firmware from <site>/firmware/.
+    base: new URL('../firmware/src/', document.baseURI).href,
     prefix: '/probe-web-firmware/',
   }),
   new UrlSourceProvider({ base: qs.get('srcBase') ?? '/@fs/', prefix: qs.get('srcPrefix') ?? '/' }),
@@ -553,6 +554,10 @@ if (qs.has('auto')) {
       await stopped;
       await sleep(1500);
       check('source view shows main.rs with the PC at the breakpoint line', !!source.path?.endsWith(srcPath) && source.pcLine === bpLine, `${source.path}:${source.pcLine}`);
+      // Assert the text too: a server that answers every path with its index page would satisfy
+      // the check above while showing HTML instead of code.
+      const needle = qs.get('srcNeedle') ?? 'fn step_b';
+      check('source view shows the firmware source, not a placeholder', source.text.includes(needle), `${source.text.length} chars, ${needle}: ${source.text.includes(needle)}`);
       check('source view shows the breakpoint glyph', source.breakpointLines().includes(bpLine), JSON.stringify(source.breakpointLines()));
       const stackRow = (await show('callstack'))?.shadowRoot?.querySelector('tr.selected')?.getAttribute('data-frame');
       check('call stack panel selects step_b', stackRow === 'step_b', String(stackRow));
