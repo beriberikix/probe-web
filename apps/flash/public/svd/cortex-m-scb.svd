@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal CMSIS-SVD for tests: the Cortex-M System Control Block, present on every
+     Cortex-M core, so the Peripherals scope can be checked without a vendor SVD. -->
+<device schemaVersion="1.3" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd">
+  <name>CortexM_SCB</name>
+  <version>1.0</version>
+  <description>Cortex-M System Control Block (test subset)</description>
+  <addressUnitBits>8</addressUnitBits>
+  <width>32</width>
+  <size>32</size>
+  <access>read-write</access>
+  <resetValue>0x00000000</resetValue>
+  <resetMask>0xFFFFFFFF</resetMask>
+  <peripherals>
+    <peripheral>
+      <name>SCB</name>
+      <description>System Control Block</description>
+      <baseAddress>0xE000ED00</baseAddress>
+      <addressBlock><offset>0</offset><size>0x40</size><usage>registers</usage></addressBlock>
+      <registers>
+        <register>
+          <name>CPUID</name>
+          <description>CPUID Base Register</description>
+          <addressOffset>0x0</addressOffset>
+          <access>read-only</access>
+          <fields>
+            <field><name>REVISION</name><bitRange>[3:0]</bitRange></field>
+            <field><name>PARTNO</name><bitRange>[15:4]</bitRange></field>
+            <field><name>ARCHITECTURE</name><bitRange>[19:16]</bitRange></field>
+            <field><name>VARIANT</name><bitRange>[23:20]</bitRange></field>
+            <field><name>IMPLEMENTER</name><bitRange>[31:24]</bitRange></field>
+          </fields>
+        </register>
+        <register>
+          <name>VTOR</name>
+          <description>Vector Table Offset Register</description>
+          <addressOffset>0x8</addressOffset>
+          <access>read-write</access>
+        </register>
+      </registers>
+    </peripheral>
+  </peripherals>
+</device>

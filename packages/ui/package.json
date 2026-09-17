@@ -9,7 +9,15 @@
     "./rtt-terminal": "./src/rtt-terminal.ts",
     "./target-picker": "./src/target-picker.ts",
     "./semihosting-console": "./src/semihosting-console.ts",
-    "./serial-monitor": "./src/serial-monitor.ts"
+    "./serial-monitor": "./src/serial-monitor.ts",
+    "./core-controls": "./src/core-controls.ts",
+    "./registers": "./src/registers.ts",
+    "./callstack": "./src/callstack.ts",
+    "./variables": "./src/variables.ts",
+    "./breakpoints": "./src/breakpoints.ts",
+    "./disassembly": "./src/disassembly.ts",
+    "./memory-view": "./src/memory-view.ts",
+    "./peripherals": "./src/peripherals.ts"
   },
   "dependencies": {
     "@probe-web/client": "*",

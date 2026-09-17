@@ -17,3 +17,10 @@ semihosting, halts, or the timeout cancels the run. It exits 0 when every
 `--expect` string was printed and the firmware did not report a failure;
 otherwise 1. A semihosting `SYS_EXIT` from the firmware therefore becomes the
 job's result.
+
+## Debugging checks
+
+`debug.ts` (SDK `Debugger`), `dap.ts` (`@probe-web/dap`), `debug-basic.ts` (run control without an
+ELF), `robustness.ts` and `rtt-scan-pacing.ts` (`probe-rs serve` behaviour) run against the
+debug-target firmware. Build instructions and the per-board command lines are in
+[`hardware-tests/README.md`](../../hardware-tests/README.md#debugging-phase-3).

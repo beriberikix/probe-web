@@ -1,0 +1,19 @@
+{
+  "name": "@probe-web/app-workbench",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": { "dev": "vite --port 5175 --strictPort", "build": "tsc --noEmit && vite build" },
+  "dependencies": {
+    "@probe-web/artifacts": "*",
+    "@probe-web/client": "*",
+    "@probe-web/dap": "*",
+    "@probe-web/ui": "*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "dockview": "^8.3.1",
+    "lit": "^3.2.0",
+    "monaco-editor": "^0.56.0"
+  },
+  "devDependencies": { "@vscode/debugprotocol": "^1.68.0" }
+}

@@ -4,12 +4,22 @@
  * WebSocket, or probe-rs itself compiled to wasm inside a Web Worker over
  * WebUSB. Wire types are generated from the probe-rs RPC schema (`./wire`).
  */
-import init, { ProbeWebClient, ProbeWebSession, ProbeWebCore, rttSymbolAddress } from '../wasm/probe_web_core.js';
+import init, { ProbeWebClient, ProbeWebSession, ProbeWebCore, elfSymbolAddress, rttSymbolAddress } from '../wasm/probe_web_core.js';
 import type * as Wire from './wire';
+import { Debugger, type DebugSessionLike, type DebuggerOptions } from './debugger.ts';
 
 export type { Wire };
+export { Debugger, registerTable, registerValueToBigInt } from './debugger.ts';
+export { DirectorySourceProvider, UrlSourceProvider, matchSourcePath } from './sources.ts';
+export type { DirectoryHandleLike, SourceProvider } from './sources.ts';
+export type { Breakpoint, DebugOutput, DebuggerOptions, Evaluation, Frame, Instruction, RegisterInfo, RegisterValue, RunState, Scope, SourceLocation, SteppingMode, StoppedDetail, Variable } from './debugger.ts';
 
 let wasmReady: Promise<unknown> | null = null;
+
+/** Address of a symbol in an ELF (exact name). Call after `ensureWasm()`. */
+export function elfSymbol(elf: Uint8Array, name: string): bigint | undefined {
+  return elfSymbolAddress(elf, name);
+}
 
 /** Whether an ELF links an RTT control block (`_SEGGER_RTT`). Call after `ensureWasm()`. */
 export function elfHasRtt(elf: Uint8Array): boolean {
@@ -222,6 +232,7 @@ export class Client {
     this.releaseLock = null;
     this.worker?.terminate();
     this.worker = null;
+    this.raw.close();
     this.raw.free();
   }
 
@@ -306,14 +317,20 @@ export class Client {
       wait_for_probe: null,
     };
     const raw = await this.raw.attach(req);
-    return new Session(raw);
+    return new Session(raw, (path) => this.supports(path));
   }
 }
 
+/** RPC endpoints a `Debugger` needs; missing on the WebUSB worker today. */
+const DEBUG_ENDPOINTS: (keyof Wire.Endpoints)[] = ['core/step', 'core/read_registers', 'stack_trace/rich', 'stack_trace/scopes', 'debug_state/load_debug_info'];
+
 export class Session {
   readonly raw: ProbeWebSession;
-  constructor(raw: ProbeWebSession) {
+  /** Whether the server implements an endpoint (always true when unknown). */
+  readonly supports: (path: keyof Wire.Endpoints) => boolean;
+  constructor(raw: ProbeWebSession, supports: (path: keyof Wire.Endpoints) => boolean = () => true) {
     this.raw = raw;
+    this.supports = supports;
   }
 
   targetMetadata(): Promise<Wire.WireSessionTargetMetadata> {
@@ -393,6 +410,18 @@ export class Session {
 
   core(index = 0): Core {
     return new Core(this.raw.core(index));
+  }
+
+  /** A `Debugger` for one core (WebSocket transport; see `debugger.ts`). */
+  debugger(options: DebuggerOptions = {}): Debugger {
+    const missing = DEBUG_ENDPOINTS.filter((e) => !this.supports(e));
+    if (missing.length) {
+      throw Object.assign(
+        new Error(`debugging is not available on this connection (missing ${missing.join(', ')}); connect to probe-rs serve over WebSocket`),
+        { kind: 'unsupported', missing },
+      );
+    }
+    return new Debugger(this as unknown as DebugSessionLike, options);
   }
 }
 

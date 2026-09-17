@@ -159,8 +159,33 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-/** Remember a picked handle under `key` (e.g. the manifest name). */
-export async function rememberHandle(key: string, handle: FileHandleLike): Promise<void> {
+/** A handle whose read permission can be queried and requested (file or directory handle). */
+export interface PermissionHandleLike {
+  name: string;
+  queryPermission?(d: { mode: 'read' }): Promise<PermissionState>;
+  requestPermission?(d: { mode: 'read' }): Promise<PermissionState>;
+}
+
+/**
+ * Read permission for a restored handle. With `request: false` only checks (safe without a user
+ * gesture); with `request: true` asks the user, which must run inside a user gesture.
+ */
+export async function readPermission(handle: PermissionHandleLike, opts: { request?: boolean } = {}): Promise<boolean> {
+  if (!handle.queryPermission) return true;
+  try {
+    if ((await handle.queryPermission({ mode: 'read' })) === 'granted') return true;
+    if (!opts.request) return false;
+    return (await handle.requestPermission?.({ mode: 'read' })) === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remember a picked handle under `key` (e.g. the manifest name). Any `FileSystemHandle` works,
+ * directories included; the object must be a real handle (IndexedDB structured-clones it).
+ */
+export async function rememberHandle(key: string, handle: FileHandleLike | PermissionHandleLike): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -185,6 +210,20 @@ export async function recallHandle(key: string): Promise<FileArtifact | null> {
   }
 }
 
+/** Restore a remembered handle of any kind (e.g. a directory handle); `null` if none. */
+export async function recallRawHandle<T = unknown>(key: string): Promise<T | null> {
+  try {
+    const db = await openDb();
+    return await new Promise<T | null>((resolve, reject) => {
+      const req = db.transaction(STORE).objectStore(STORE).get(key);
+      req.onsuccess = () => resolve((req.result as T | undefined) ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function forgetHandle(key: string): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve) => {
@@ -192,4 +231,71 @@ export async function forgetHandle(key: string): Promise<void> {
     tx.objectStore(STORE).delete(key);
     tx.oncomplete = () => resolve();
   });
+}
+
+// ---- restoring a set of remembered handles ----
+
+/** Where handles are kept; `indexedDbHandleStore` in browsers, a map in tests. */
+export interface HandleStore {
+  get(key: string): Promise<unknown>;
+  put(key: string, handle: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+  keys(): Promise<string[]>;
+}
+
+export const indexedDbHandleStore: HandleStore = {
+  get: (key) => recallRawHandle(key),
+  put: (key, handle) => rememberHandle(key, handle as PermissionHandleLike),
+  delete: (key) => forgetHandle(key),
+  async keys() {
+    try {
+      const db = await openDb();
+      return await new Promise<string[]>((resolve, reject) => {
+        const req = db.transaction(STORE).objectStore(STORE).getAllKeys();
+        req.onsuccess = () => resolve(req.result.map(String));
+        req.onerror = () => reject(req.error);
+      });
+    } catch {
+      return [];
+    }
+  },
+};
+
+export interface RestoreEntry<H extends PermissionHandleLike = PermissionHandleLike> {
+  key: string;
+  /** Use the restored handle (read the file, index the folder, …). */
+  apply(handle: H): Promise<void> | void;
+}
+
+export interface RestoreResult {
+  /** Keys whose handle was applied. */
+  restored: string[];
+  /** Handles that still need read permission (ask inside a user gesture with `request: true`). */
+  waiting: { key: string; name: string }[];
+  /** Handles that could not be used (file moved or deleted, …). */
+  failed: { key: string; name: string; error: string }[];
+}
+
+/**
+ * Restore remembered handles in order. Without `request` nothing prompts, so it is safe on page
+ * load; with it, each missing permission is requested (call from a click handler).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function restoreHandles(store: HandleStore, entries: RestoreEntry<any>[], opts: { request?: boolean } = {}): Promise<RestoreResult> {
+  const result: RestoreResult = { restored: [], waiting: [], failed: [] };
+  for (const entry of entries) {
+    const handle = (await store.get(entry.key).catch(() => null)) as PermissionHandleLike | null;
+    if (!handle) continue;
+    if (!(await readPermission(handle, opts))) {
+      result.waiting.push({ key: entry.key, name: handle.name });
+      continue;
+    }
+    try {
+      await entry.apply(handle);
+      result.restored.push(entry.key);
+    } catch (e) {
+      result.failed.push({ key: entry.key, name: handle.name, error: (e as Error).message ?? String(e) });
+    }
+  }
+  return result;
 }

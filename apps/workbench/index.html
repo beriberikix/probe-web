@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>probe-web workbench</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { font: 13px system-ui, sans-serif; color: #111; background: #f6f7f9; display: flex; flex-direction: column; }
+    header { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid #ddd; background: #fff; }
+    header h1 { font-size: 14px; margin: 0 8px 0 0; }
+    header input { font: inherit; padding: 3px 6px; }
+    header button { font: inherit; padding: 4px 9px; }
+    header .sep { width: 1px; height: 20px; background: #ddd; margin: 0 4px; }
+    #status { color: #555; margin-left: auto; }
+    #dock { flex: 1; min-height: 0; }
+    .panel { height: 100%; overflow: auto; padding: 6px 8px; box-sizing: border-box; background: #fff; }
+    .source-panel { height: 100%; display: flex; flex-direction: column; background: #fff; }
+    .source-header { font: 12px ui-monospace, monospace; color: #555; padding: 3px 8px; border-bottom: 1px solid #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .source-editor { flex: 1; min-height: 0; }
+    .console-panel { height: 100%; background: #0b0f14; padding: 4px; box-sizing: border-box; }
+    /* Monaco glyphs (global CSS: Monaco renders in light DOM). */
+    .bp-verified { background: radial-gradient(circle, #dc2626 45%, transparent 50%); }
+    .bp-unverified { background: radial-gradient(circle, transparent 35%, #dc2626 40%, #dc2626 48%, transparent 52%); }
+    .pc-line { background: rgba(250, 204, 21, 0.25); }
+    .pc-arrow::before { content: '➤'; color: #ca8a04; font-size: 12px; margin-left: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>probe-web workbench</h1>
+    <input id="url" value="ws://127.0.0.1:3000" size="18" title="probe-rs serve URL">
+    <input id="token" placeholder="token" size="7">
+    <input id="probe" placeholder="probe (substring)" size="12">
+    <input id="chip" placeholder="chip" size="10">
+    <select id="protocol" title="wire protocol"><option>Swd</option><option>Jtag</option></select>
+    <span class="sep"></span>
+    <button id="pick-elf" title="Pick the firmware ELF; it is watched and re-flashed when rebuilt">ELF…</button>
+    <span id="elf-name" class="muted"></span>
+    <button id="pick-svd">SVD…</button>
+    <span id="svd-name" class="muted"></span>
+    <button id="pick-src" title="Pick the project folder so sources can be shown">Sources…</button>
+    <span id="src-name" class="muted"></span>
+    <button id="resume" hidden></button>
+    <button id="forget" title="Forget the remembered ELF, SVD and source folder">Forget files</button>
+    <span class="sep"></span>
+    <label><input type="checkbox" id="stop-on-entry"> stop on entry</label>
+    <button id="launch">Launch</button>
+    <button id="attach">Attach</button>
+    <button id="stop" disabled>Stop</button>
+    <span class="sep"></span>
+    <button id="reset-layout">Reset layout</button>
+    <span id="status">not connected</span>
+  </header>
+  <div id="dock" class="dockview-theme-light"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

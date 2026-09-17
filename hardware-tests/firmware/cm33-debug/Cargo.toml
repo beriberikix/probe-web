@@ -1,0 +1,25 @@
+[package]
+name = "cm33-debug"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone debug-target firmware for the Cortex-M33 boards (FRDM-MCXA153,
+# Thingy:91 nRF9160). Pick the memory layout with a feature.
+[workspace]
+
+[features]
+mcxa153 = []
+nrf9160 = []
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+rtt-target = "0.6"
+panic-halt = "1"
+
+[profile.release]
+# Debuggable: full DWARF, light optimisation so locals and lines stay meaningful.
+debug = 2
+opt-level = 1
+codegen-units = 1

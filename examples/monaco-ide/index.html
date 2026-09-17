@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>probe-web Monaco IDE example</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { display: grid; grid-template-rows: auto 1fr 35%; font: 13px system-ui, sans-serif; }
+    header { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid #ddd; }
+    header input { font: inherit; width: 9em; } header button { font: inherit; }
+    #editor { min-height: 0; }
+    #term { background: #0b0f14; padding: 4px; min-height: 0; }
+    .bp { background: radial-gradient(circle, #dc2626 45%, transparent 50%); }
+    .pc { background: rgba(250, 204, 21, 0.3); }
+  </style>
+</head>
+<body>
+  <header>
+    <b>Monaco IDE (DAP only)</b>
+    <input id="url" value="ws://127.0.0.1:3000"> <input id="token" placeholder="token"> <input id="probe" placeholder="probe"> <input id="chip" placeholder="chip">
+    <input id="elf" value="/firmware/mcxa153-debug.elf" title="ELF URL">
+    <button id="launch">Launch</button>
+    <button data-cmd="continue">Continue</button><button data-cmd="pause">Pause</button>
+    <button data-cmd="next">Step over</button><button data-cmd="stepIn">Step in</button><button data-cmd="stepOut">Step out</button>
+    <button id="stop">Stop</button>
+  </header>
+  <div id="editor"></div>
+  <div id="term"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

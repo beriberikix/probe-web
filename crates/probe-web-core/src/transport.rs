@@ -36,7 +36,7 @@ impl PostcardReceiver for ChanRx {
 
 /// Connect to `probe-rs serve` at `url` (a `ws://…/worker` URL; the path is
 /// added when missing) and authenticate with `token`.
-pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Capabilities), JsValue> {
+pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Capabilities, WebSocket), JsValue> {
     let url = if url.ends_with("/worker") {
         url.to_string()
     } else {
@@ -136,7 +136,7 @@ pub async fn connect_web_socket(url: &str, token: &str) -> Result<(RpcClient, Ca
         }
         e => client_err(e),
     })?;
-    Ok((client, caps))
+    Ok((client, caps, ws))
 }
 
 /// Resolve after `ms` milliseconds (works on a page and in a worker).

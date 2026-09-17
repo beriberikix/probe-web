@@ -1,0 +1,35 @@
+[package]
+edition      = "2024"
+name         = "esp32s3-debug"
+rust-version = "1.88"
+version      = "0.1.0"
+
+[[bin]]
+name = "esp32s3-debug"
+path = "./src/bin/main.rs"
+
+[dependencies]
+esp-hal = { version = "~1.1.0", features = ["esp32s3"] }
+
+
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3"] }
+
+critical-section = "1.2.0"
+panic-rtt-target = "0.2.0"
+rtt-target       = "0.6.2"
+
+
+# For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
+[profile.dev]
+# The default debug profile is too slow and too big for resource-constrained devices.
+# Always build with some optimizations enabled.
+opt-level = "s"
+
+[profile.release]
+# Debuggable, like cm33-debug: full DWARF, light optimisation, no LTO.
+codegen-units = 1
+debug         = 2
+opt-level     = 1
+
+# Standalone: not part of the probe-web workspace.
+[workspace]

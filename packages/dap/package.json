@@ -1,0 +1,10 @@
+{
+  "name": "@probe-web/dap",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Debug Adapter Protocol for probe-rs in the browser (inline adapter over @probe-web/client's Debugger)",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "vitest run" },
+  "dependencies": { "@probe-web/client": "*" },
+  "devDependencies": { "@vscode/debugprotocol": "^1.68.0", "vitest": "^2.1.0" }
+}

@@ -1,4 +1,13 @@
-{ "name": "@probe-web/example-node-ci", "private": true, "type": "module",
+{
+  "name": "@probe-web/example-node-ci",
+  "private": true,
+  "type": "module",
   "description": "Hardware-in-the-loop test from Node: flash, verify, monitor RTT/semihosting through probe-rs serve",
-  "scripts": { "test:hil": "node --experimental-transform-types run.ts" },
-  "dependencies": { "@probe-web/client": "*" } }
+  "scripts": {
+    "test:hil": "node --experimental-transform-types run.ts"
+  },
+  "dependencies": {
+    "@probe-web/client": "*",
+    "@probe-web/dap": "*"
+  }
+}
