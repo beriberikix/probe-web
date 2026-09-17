@@ -52,12 +52,22 @@ Worth knowing before you try it:
   chip works.
 - Nothing is published to npm yet; the API still moves.
 
-## Try it
+## Try it in the browser
+
+https://beriberikix.github.io/probe-web/ runs the flasher, with the inspector at
+`/inspect/`, the workbench at `/workbench/` and the DAP-only IDE example at
+`/monaco-ide/`. Firmware for the FRDM-MCXA153 and the Thingy:91 (nRF9160) is
+built and shipped with the site, so a board and a Chromium browser are enough:
+pick a demo image, select your probe, flash, then open the workbench to set a
+breakpoint. Nothing is installed, and no server is involved.
+
+## Run it locally
 
 ```sh
 npm install
-./scripts/build-wasm.sh      # needs the Rust toolchain in rust-toolchain.toml
-npm run dev -w apps/flash    # http://127.0.0.1:5173
+./scripts/build-wasm.sh       # needs the Rust toolchain in rust-toolchain.toml
+./scripts/build-firmware.sh   # optional: the demo images, needs thumbv8m.main-none-eabi
+npm run dev -w apps/flash     # http://127.0.0.1:5173
 ```
 
 Open the page in Chrome, pick a probe when asked, choose a chip and a

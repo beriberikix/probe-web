@@ -3,7 +3,14 @@
   "chip": "nRF9160_xxAA",
   "protocol": "Swd",
   "images": [
-    { "url": "/firmware/nrf9160-rtt-echo.elf", "format": "elf", "name": "nrf9160-rtt-echo.elf", "defmt": false }
+    {
+      "url": "firmware/nrf9160-rtt-echo.elf",
+      "format": "elf",
+      "name": "nrf9160-rtt-echo.elf",
+      "defmt": false
+    }
   ],
-  "options": { "verify": true }
+  "options": {
+    "verify": true
+  }
 }

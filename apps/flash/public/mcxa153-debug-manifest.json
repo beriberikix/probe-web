@@ -1,0 +1,15 @@
+{
+  "name": "FRDM-MCXA153 debug target (breakpoints, variables, RTT)",
+  "chip": "MCXA153",
+  "protocol": "Swd",
+  "images": [
+    {
+      "url": "firmware/mcxa153-debug.elf",
+      "format": "elf",
+      "name": "mcxa153-debug.elf"
+    }
+  ],
+  "options": {
+    "verify": true
+  }
+}

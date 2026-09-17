@@ -1,0 +1,30 @@
+[
+  {
+    "manifest": "mcxa153-debug-manifest.json",
+    "label": "FRDM-MCXA153 \u2014 debug target"
+  },
+  {
+    "manifest": "rtt-manifest.json",
+    "label": "FRDM-MCXA153 \u2014 defmt RTT"
+  },
+  {
+    "manifest": "flash-manifest.json",
+    "label": "FRDM-MCXA153 \u2014 4 KB test pattern"
+  },
+  {
+    "manifest": "nrf9160-debug-manifest.json",
+    "label": "Thingy:91 nRF9160 \u2014 debug target"
+  },
+  {
+    "manifest": "nrf-rtt-manifest.json",
+    "label": "Thingy:91 nRF9160 \u2014 RTT echo"
+  },
+  {
+    "manifest": "nrf-semi-manifest.json",
+    "label": "Thingy:91 nRF9160 \u2014 semihosting"
+  },
+  {
+    "manifest": "nrf-manifest.json",
+    "label": "Thingy:91 nRF9160 \u2014 4 KB test pattern"
+  }
+]

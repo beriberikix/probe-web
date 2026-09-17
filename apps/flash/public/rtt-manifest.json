@@ -3,7 +3,14 @@
   "chip": "MCXA153",
   "protocol": "Swd",
   "images": [
-    { "url": "/firmware/mcxa153-rtt.elf", "format": "elf", "name": "mcxa153-rtt.elf", "defmt": true }
+    {
+      "url": "firmware/mcxa153-rtt.elf",
+      "format": "elf",
+      "name": "mcxa153-rtt.elf",
+      "defmt": true
+    }
   ],
-  "options": { "verify": true }
+  "options": {
+    "verify": true
+  }
 }

@@ -45,9 +45,44 @@ serialMonitor.addEventListener('serial-state', (e) => {
 serialMonitor.addEventListener('serial-line', (e) => log(`serial: ${(e as CustomEvent<string>).detail}`));
 targets.addEventListener('chip-selected', (e) => { $<HTMLInputElement>('chip').value = (e as CustomEvent<string>).detail; log(`chip: ${(e as CustomEvent<string>).detail}`); });
 
+/**
+ * Fill the demo picker from the index shipped with the site, so a visitor can flash something
+ * without having a firmware file to hand. Choosing one reloads with `?manifest=`, which is also
+ * what a deployment pointing at its own firmware would use.
+ */
+async function loadDemos() {
+  const select = $<HTMLSelectElement>('demo');
+  try {
+    const url = new URL('demos.json', document.baseURI);
+    const demos = (await (await fetch(url)).json()) as { manifest: string; label: string }[];
+    const current = qs.get('manifest') ?? 'flash-manifest.json';
+    select.replaceChildren(
+      ...demos.map((d) => {
+        const option = document.createElement('option');
+        option.value = d.manifest;
+        option.textContent = d.label;
+        option.selected = d.manifest === current;
+        return option;
+      }),
+    );
+    select.onchange = () => {
+      const next = new URL(location.href);
+      next.searchParams.set('manifest', select.value);
+      location.href = next.href;
+    };
+  } catch {
+    select.replaceChildren(new Option('none shipped with this site', ''));
+    select.disabled = true;
+  }
+}
+
 async function loadManifest() {
   try {
-    manifest = await (await fetch(qs.get('manifest') ?? '/flash-manifest.json')).json();
+    // Relative to the page, so the app works under any base path (a project GitHub Pages site
+    // is served from /<repo>/, not /). Image URLs resolve against the manifest's own URL.
+    const manifestUrl = new URL(qs.get('manifest') ?? 'flash-manifest.json', document.baseURI);
+    manifest = await (await fetch(manifestUrl)).json();
+    const imageUrl = (url: string) => new URL(url, manifestUrl).href;
     $('manifest-name').textContent = manifest!.name;
     if (manifest!.chip) $<HTMLInputElement>('chip').value = manifest!.chip;
     if (manifest!.protocol) $<HTMLSelectElement>('protocol').value = manifest!.protocol;
@@ -56,14 +91,14 @@ async function loadManifest() {
       // ?tag= regenerates the test pattern in-page so a run is provably fresh.
       const tag = qs.get('tag');
       flash.job = {
-        image: tag ? pattern(tag) : img.url,
+        image: tag ? pattern(tag) : imageUrl(img.url),
         name: img.name ?? img.url,
         format: img.format,
         baseAddress: img.address ? BigInt(img.address) : undefined,
         options: manifest!.options,
       };
       if (img.format === 'elf' && !tag) {
-        imageElf = new Uint8Array(await (await fetch(img.url)).arrayBuffer());
+        imageElf = new Uint8Array(await (await fetch(imageUrl(img.url))).arrayBuffer());
         if (img.defmt) defmtElf = imageElf;
       }
     }
@@ -157,6 +192,7 @@ function pattern(tag: string): Uint8Array {
   return v;
 }
 
+await loadDemos();
 await loadManifest();
 
 // ?auto=1[&transport=webusb|websocket&token=…&tag=…]: connect, use the first

@@ -35,6 +35,11 @@ jobs:
 
       - run: ./scripts/build-wasm.sh
 
+      # The demo images the site offers, so a visitor can flash a board without having a
+      # firmware file of their own. Cortex-M only: the ESP32-S3 image needs the Xtensa
+      # toolchain, which is a much larger install.
+      - run: ./scripts/build-firmware.sh
+
       # All apps under one origin, because WebUSB grants are per origin. A project site is
       # served from /<repo>/, so that is the base every asset URL is built against.
       - name: Build the site
