@@ -3,11 +3,18 @@ import { Debugger, registerTable, type DebugSessionLike } from '../src/debugger.
 import type * as Wire from '../src/wire';
 
 /** A scripted fake of the session/core surface the Debugger uses; records call order. */
-function fakeSession(opts: { coreType?: Wire.WireCoreType; fpu?: boolean; fpCount?: bigint | null } = {}) {
+function fakeSession(opts: { coreType?: Wire.WireCoreType; fpu?: boolean; fpCount?: bigint | null; frames?: { id: number; name: string; pc: number }[] } = {}) {
   const calls: string[] = [];
   const onTarget = new Set<bigint>();
   let status: Wire.WireCoreStatus = 'Running';
-  const regs = new Map<number, bigint>([[15, 0x1234n], [13, 0x2000_1000n], [0, 7n]]);
+  // probe-rs numbers registers per architecture: PC and SP are 15/13 on Arm, 65280/1 on Xtensa.
+  const xtensa = opts.coreType === 'Xtensa';
+  const PC_ID = xtensa ? 65280 : 15;
+  const SP_ID = xtensa ? 1 : 13;
+  const regs = new Map<number, bigint>([[PC_ID, 0x1234n], [SP_ID, 0x2000_1000n], [0, 7n]]);
+  // Running to a breakpoint: the next `status` reports halted at `landing`, with the stack
+  // pointer the test asks for (a recursive hit keeps the same one).
+  let landing: { pc: bigint; sp: bigint } | null = null;
   const session: DebugSessionLike = {
     targetMetadata: async () => ({ target_name: 't', default_format: null, cores: [{ index: 0, core_type: opts.coreType ?? 'Armv8m' }], memory_map: [], flash_sectors: [] }),
     raw: {
@@ -18,7 +25,12 @@ function fakeSession(opts: { coreType?: Wire.WireCoreType; fpu?: boolean; fpCoun
       clearSvd: async () => {},
       richStackTrace: async () => {
         calls.push('richStackTrace');
-        return { cores: [{ core: 0, frames: [{ id: 5, function_name: 'leaf', program_counter: { U32: 0x1234 }, is_inlined: false, location: { file: '/b/src/main.rs', line: 9n, column: null }, frame_base: null, canonical_frame_address: null, registers: [] }] }] };
+        const frames = (opts.frames ?? [{ id: 5, name: 'leaf', pc: 0x1234 }]).map((f) => ({
+          id: f.id, function_name: f.name, program_counter: { U32: f.pc }, is_inlined: false,
+          location: { file: '/b/src/main.rs', line: 9n, column: null },
+          frame_base: null, canonical_frame_address: null, registers: [],
+        }));
+        return { cores: [{ core: 0, frames }] };
       },
       scopes: async () => [{ name: 'Variables', presentation_hint: null, variables_reference: 11n, expensive: false, line: null, column: null }],
       variables: async (_c: number, ref: number) => { calls.push(`variables ${ref}`); return ref === 11 ? [{ name: 'x', evaluate_name: null, memory_reference: null, indexed_variables: null, named_variables: null, type_: 'u32', value: '3', variables_reference: 0n }] : []; },
@@ -35,7 +47,16 @@ function fakeSession(opts: { coreType?: Wire.WireCoreType; fpu?: boolean; fpCoun
       raw: {
         status: async () => { calls.push('status'); return status; },
         halt: async () => { calls.push('halt'); status = { Halted: 'Request' }; return { pc: 0x1234n }; },
-        run: async () => { calls.push('run'); status = 'Running'; },
+        run: async () => {
+          calls.push('run');
+          status = 'Running';
+          if (landing) {
+            // The core reaches the breakpoint straight away.
+            status = { Halted: { Breakpoint: 'Hardware' } };
+            regs.set(PC_ID, landing.pc);
+            regs.set(SP_ID, landing.sp);
+          }
+        },
         reset: async () => { calls.push('reset'); },
         resetAndHalt: async () => { calls.push('resetAndHalt'); status = { Halted: 'Request' }; return { pc: 0x100n }; },
         metadata: async () => ({ fpu_support: opts.fpu ?? false, floating_point_register_count: opts.fpCount ?? null, instruction_set: 'Thumb2' }),
@@ -55,7 +76,12 @@ function fakeSession(opts: { coreType?: Wire.WireCoreType; fpu?: boolean; fpCoun
       },
     }),
   };
-  return { session, calls, onTarget, setStatus: (s: Wire.WireCoreStatus) => { status = s; } };
+  return {
+    session, calls, onTarget,
+    setStatus: (s: Wire.WireCoreStatus) => { status = s; },
+    /** What the core reports once it is resumed. */
+    setLanding: (pc: bigint, sp: bigint) => { landing = { pc, sp }; },
+  };
 }
 
 const events = (d: Debugger) => {
@@ -255,5 +281,62 @@ describe('Debugger', () => {
     expect(outputs).toEqual(['rtt:n=1 result=3\n', 'semihosting:hello from semihosting\n']);
     expect(stops).toEqual([]); // a serviced semihosting call is not a stop
     expect(d.state).toBe('running');
+  });
+
+  it('steps out on Xtensa by running to the caller, not through probe-rs', async () => {
+    // probe-rs's own step out mis-unwinds Xtensa's windowed registers, so the Debugger runs to
+    // the return address the stack trace gives instead.
+    const f = fakeSession({ coreType: 'Xtensa', frames: [{ id: 5, name: 'step_b', pc: 0x1234 }, { id: 6, name: 'step_a', pc: 0x4200_10ac }] });
+    f.setStatus({ Halted: { Breakpoint: 'Hardware' } });
+    f.setLanding(0x4200_10acn, 0x2000_2000n); // caller reached, stack popped
+    const d = new Debugger(f.session);
+    await d.refresh();
+
+    const res = await d.step('out');
+
+    expect(res.pc).toBe(0x4200_10acn);
+    expect(f.calls).not.toContain('step');
+    expect(f.calls).toContain('set 420010ac'); // comparator set at the caller…
+    expect(f.calls).toContain('clear 420010ac'); // …and released afterwards
+    expect(f.onTarget.size).toBe(0);
+  });
+
+  it('keeps going when a recursive call hits the same address in a deeper frame', async () => {
+    const f = fakeSession({ coreType: 'Xtensa', frames: [{ id: 5, name: 'rec', pc: 0x1234 }, { id: 6, name: 'rec', pc: 0x2000 }] });
+    f.setStatus({ Halted: { Breakpoint: 'Hardware' } });
+    f.setLanding(0x2000n, 0x2000_0f00n); // same address, stack *below* where it started
+    const d = new Debugger(f.session, { stepOutTimeoutMs: 60 });
+    await d.refresh();
+
+    const res = await d.step('out');
+
+    // It resumed more than once rather than reporting the recursive hit as the caller.
+    expect(f.calls.filter((c) => c === 'run').length).toBeGreaterThan(1);
+    expect(res.warning).toMatch(/timed out/);
+  });
+
+  it('uses probe-rs step out on other architectures, and when asked to', async () => {
+    const arm = fakeSession({ frames: [{ id: 5, name: 'leaf', pc: 0x1234 }, { id: 6, name: 'caller', pc: 0x2000 }] });
+    arm.setStatus({ Halted: { Breakpoint: 'Hardware' } });
+    const d = new Debugger(arm.session);
+    await d.refresh();
+    await d.step('out');
+    expect(arm.calls).toContain('step');
+
+    const xtensa = fakeSession({ coreType: 'Xtensa', frames: [{ id: 5, name: 'step_b', pc: 0x1234 }, { id: 6, name: 'step_a', pc: 0x2000 }] });
+    xtensa.setStatus({ Halted: { Breakpoint: 'Hardware' } });
+    const forced = new Debugger(xtensa.session, { stepOut: 'server' });
+    await forced.refresh();
+    await forced.step('out');
+    expect(xtensa.calls).toContain('step');
+  });
+
+  it('falls back to probe-rs when there is no caller frame', async () => {
+    const f = fakeSession({ coreType: 'Xtensa' }); // one frame only
+    f.setStatus({ Halted: { Breakpoint: 'Hardware' } });
+    const d = new Debugger(f.session);
+    await d.refresh();
+    await d.step('out');
+    expect(f.calls).toContain('step');
   });
 });

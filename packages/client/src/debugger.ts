@@ -170,7 +170,20 @@ export interface DebuggerOptions {
   pollHaltedMs?: number;
   /** Timeout for halt requests (ms). */
   haltTimeoutMs?: number;
+  /**
+   * How `step('out')` is performed.
+   *
+   * `server` asks probe-rs to step out. `caller-breakpoint` instead runs to the caller's return
+   * address, which the stack trace already gives us. `auto` (the default) picks
+   * `caller-breakpoint` on Xtensa, where probe-rs's step out walks the windowed register file
+   * wrongly and leaves the function's caller behind, and `server` everywhere else.
+   */
+  stepOut?: StepOutStrategy;
+  /** How long `step('out')` waits for the caller to be reached (ms). */
+  stepOutTimeoutMs?: number;
 }
+
+export type StepOutStrategy = 'auto' | 'server' | 'caller-breakpoint';
 
 function wireSourceLocation(l: Wire.WireSourceLocation): SourceLocation {
   const column = l.column === null ? null : l.column === 'LeftEdge' ? 1 : Number(l.column.Column);
@@ -237,6 +250,7 @@ export class Debugger extends EventTarget {
   private disposed = false;
   private lastState: RunState | null = null;
   private registers: RegisterInfo[] | null = null;
+  private coreType: Wire.WireCoreType | null = null;
   /** Increments whenever the core resumes; results tied to a stop carry it. */
   epoch = 0;
   private frames: Frame[] | null = null;
@@ -262,6 +276,8 @@ export class Debugger extends EventTarget {
       pollRunningMs: options.pollRunningMs ?? 50,
       pollHaltedMs: options.pollHaltedMs ?? 200,
       haltTimeoutMs: options.haltTimeoutMs ?? 500,
+      stepOut: options.stepOut ?? 'auto',
+      stepOutTimeoutMs: options.stepOutTimeoutMs ?? 5_000,
     };
   }
 
@@ -369,6 +385,7 @@ export class Debugger extends EventTarget {
     if (!this.registers) {
       const meta = await this.session.targetMetadata();
       const coreType = meta.cores.find((c) => c.index === this.coreIndex)?.core_type ?? 'Armv7m';
+      this.coreType = coreType;
       const coreMeta = (await this.core.raw.metadata()) as Wire.WireCoreMetadata;
       let table = registerTable(coreType, coreMeta.fpu_support);
       const fpCount = coreMeta.floating_point_register_count;
@@ -411,6 +428,11 @@ export class Debugger extends EventTarget {
   /** Step (`instruction` needs no debug info; the others need `loadDebugInfo`). Emits `stopped` with reason `Step`. */
   step(mode: SteppingMode): Promise<{ pc: bigint; warning: string | null }> {
     return this.exclusive(async () => {
+      if (mode === 'out' && (await this.stepOutStrategyUnlocked()) === 'caller-breakpoint') {
+        const stepped = await this.stepOutToCallerUnlocked();
+        if (stepped) return stepped;
+        // No caller to return to (or no comparator free): fall through to probe-rs.
+      }
       await this.session.raw.clearCoreDebugState(this.coreIndex);
       this.invalidate();
       const pc = this.lastStop?.pc;
@@ -431,6 +453,89 @@ export class Debugger extends EventTarget {
       this.noteStatus({ Halted: 'Step' }, res.program_counter);
       return { pc: res.program_counter, warning: res.warning };
     });
+  }
+
+  private async stepOutStrategyUnlocked(): Promise<StepOutStrategy> {
+    const configured = this.opts.stepOut;
+    if (configured !== 'auto') return configured;
+    // registerTableUnlocked caches the core type on the way past.
+    await this.registerTableUnlocked();
+    return this.coreType === 'Xtensa' ? 'caller-breakpoint' : 'server';
+  }
+
+  /**
+   * Step out by running to the caller's return address, which the stack trace already knows.
+   *
+   * Returns null when it cannot be done — no caller frame, or no comparator free — so the caller
+   * can fall back to probe-rs's own step out. A recursive function can hit the same address in a
+   * deeper frame, so the stop only counts once the stack pointer is above where it started.
+   */
+  private async stepOutToCallerUnlocked(): Promise<{ pc: bigint; warning: string | null } | null> {
+    const frames = await this.framesUnlocked(8);
+    const caller = frames.slice(1).find((f) => !f.inlined);
+    if (!caller) return null;
+
+    const table = await this.registerTableUnlocked();
+    const spId = table.find((r) => r.roles.includes('StackPointer'))?.id;
+    const spBefore = spId === undefined ? null : await this.readRegisterUnlocked(spId);
+
+    const already = this.hwRefs.has(caller.pc);
+    if (!already) {
+      const failed = await this.acquire([caller.pc]);
+      if (failed.has(caller.pc)) return null;
+    }
+
+    const deadline = Date.now() + this.opts.stepOutTimeoutMs;
+    try {
+      for (;;) {
+        await this.session.raw.clearCoreDebugState(this.coreIndex);
+        this.invalidate();
+        await this.core.raw.run();
+        // The deadline covers the whole step, not just one wait: a recursive function can hit
+        // the caller's address again and again.
+        const status = Date.now() >= deadline ? null : await this.waitForHaltUnlocked(deadline);
+        if (!status) {
+          // Still running: leave it halted where it is rather than pretending to have stepped.
+          const info = (await this.core.raw.halt(this.opts.haltTimeoutMs)) as Wire.WireCoreInformation;
+          this.lastState = null;
+          this.noteStatus({ Halted: 'Request' }, info.pc);
+          return { pc: info.pc, warning: 'step out timed out; the caller was not reached' };
+        }
+        const pc = await this.readPcUnlocked();
+        const sp = spId === undefined ? null : await this.readRegisterUnlocked(spId);
+        const returned = spBefore === null || sp === null || sp > spBefore;
+        if (pc !== caller.pc || returned) {
+          this.lastState = null;
+          // Stopping anywhere else means another breakpoint won the race; report it as such.
+          this.noteStatus(pc === caller.pc ? { Halted: 'Step' } : { Halted: { Breakpoint: 'Hardware' } }, pc);
+          return { pc, warning: null };
+        }
+        // Same address, same frame depth: a recursive call, so keep going until the deadline.
+        if (Date.now() >= deadline) {
+          const info = (await this.core.raw.halt(this.opts.haltTimeoutMs)) as Wire.WireCoreInformation;
+          this.lastState = null;
+          this.noteStatus({ Halted: 'Request' }, info.pc);
+          return { pc: info.pc, warning: 'step out timed out; the caller was not reached' };
+        }
+      }
+    } finally {
+      if (!already) await this.release([caller.pc]);
+    }
+  }
+
+  private async readRegisterUnlocked(id: number): Promise<bigint | null> {
+    const [res] = (await this.core.raw.readRegisters(new Uint16Array([id]))) as Wire.WireRegisterReadResult[];
+    return res && 'Ok' in res.result ? registerValueToBigInt(res.result.Ok) : null;
+  }
+
+  /** Poll until the core halts, or `deadline` passes (in which case: null). */
+  private async waitForHaltUnlocked(deadline: number): Promise<Wire.WireCoreStatus | null> {
+    for (;;) {
+      const status = (await this.core.raw.status()) as Wire.WireCoreStatus;
+      if (runState(status) === 'halted') return status;
+      if (Date.now() >= deadline) return null;
+      await sleep(this.opts.pollRunningMs);
+    }
   }
 
   /** Reset and keep running. Breakpoints are armed again (see `resetAndHalt`). */
