@@ -1,0 +1,7 @@
+{
+  "name": "Thingy:91 nRF9160 semihosting firmware (stdout/stderr, then exit)",
+  "chip": "nRF9160_xxAA",
+  "protocol": "Swd",
+  "images": [ { "url": "/firmware/nrf9160-semihosting.elf", "format": "elf", "name": "nrf9160-semihosting.elf", "defmt": false } ],
+  "options": { "verify": true }
+}

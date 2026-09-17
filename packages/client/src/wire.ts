@@ -103,7 +103,7 @@ export interface ClearCoreDebugStateRequest {
 
 export interface ComponentTreeNode {
   node: string;
-  children: Array<null>;
+  children: Array<ComponentTreeNode>;
 }
 
 export interface Core {

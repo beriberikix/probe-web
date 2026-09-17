@@ -1,7 +1,7 @@
 import '@probe-web/ui';
 import { describe, onDevicesChanged } from '@probe-web/devices';
 import { Client, Session, createLocalWorker, type FlashJob, type Wire } from '@probe-web/client';
-import type { ProbeDevicePicker, ProbeFlashPanel, ProbeRttTerminal } from '@probe-web/ui';
+import type { ProbeDevicePicker, ProbeFlashPanel, ProbeRttTerminal, ProbeSemihostingConsole, ProbeSerialMonitor, ProbeTargetPicker } from '@probe-web/ui';
 
 interface Manifest {
   name: string;
@@ -26,6 +26,16 @@ let imageElf: Uint8Array | null = null;
 const picker = $<ProbeDevicePicker>('picker');
 const flash = $<ProbeFlashPanel>('flash');
 const rtt = $<ProbeRttTerminal>('rtt');
+const targets = $<ProbeTargetPicker>('targets');
+const semi = $<ProbeSemihostingConsole>('semi');
+semi.source = rtt;
+const serialMonitor = $<ProbeSerialMonitor>('serial');
+serialMonitor.addEventListener('serial-state', (e) => {
+  const d = (e as CustomEvent<{ connected: boolean; reason?: string }>).detail;
+  log(d.connected ? `serial: connected @ ${serialMonitor.baudRate}` : `serial: disconnected (${d.reason})`);
+});
+serialMonitor.addEventListener('serial-line', (e) => log(`serial: ${(e as CustomEvent<string>).detail}`));
+targets.addEventListener('chip-selected', (e) => { $<HTMLInputElement>('chip').value = (e as CustomEvent<string>).detail; log(`chip: ${(e as CustomEvent<string>).detail}`); });
 
 async function loadManifest() {
   try {
@@ -66,6 +76,7 @@ async function connect(): Promise<Client | null> {
           return Client.connect({ kind, worker });
         })();
     picker.client = client;
+    targets.client = client;
     $('conn-status').textContent = `connected (${kind})`;
     const caps = client.capabilities();
     log(`connected via ${kind}; ${caps.unsupportedEndpoints.length} unsupported endpoint(s)${caps.unsupportedEndpoints.length ? ': ' + caps.unsupportedEndpoints.join(', ') : ''}`);
@@ -104,9 +115,13 @@ picker.addEventListener('probe-selected', (e) => {
   probe = (e as CustomEvent<Wire.DebugProbeEntry>).detail;
   log(`probe: ${probe.identifier}`);
 });
-flash.addEventListener('flash-done', (e) => {
+flash.addEventListener('artifact-changed', (e) => log(`watched file changed: ${(e as CustomEvent).detail.name} (${(e as CustomEvent).detail.size} bytes)`));
+flash.addEventListener('flash-done', async (e) => {
   const { bootInfo, ms } = (e as CustomEvent).detail;
+  const wasMonitoring = (rtt as unknown as { running: boolean }).running;
+  if (wasMonitoring) await rtt.stop();
   rtt.bootInfo = bootInfo;
+  if (wasMonitoring) setTimeout(() => void rtt.start(), 200);
   // The flashed ELF is also the defmt table for decoding its RTT output.
   if (imageElf) rtt.elf = imageElf;
   if (defmtElf) rtt.defmtElf = defmtElf;
@@ -138,6 +153,63 @@ await loadManifest();
 
 // ?auto=1[&transport=webusb|websocket&token=…&tag=…]: connect, use the first
 // probe, attach with the manifest's chip, flash. For automated verification.
+// ?crashtest=1: fake worker only. Starts a scan that makes the worker panic and
+// checks that the in-flight call and a later call reject as 'worker-crashed'.
+if (qs.has('crashtest')) {
+  void (async () => {
+    const t0 = performance.now();
+    const c = await Client.connect({ kind: 'webusb', fake: true });
+    const probeEntry: Wire.DebugProbeEntry = { identifier: 'crash', vendor_id: 0xffff, product_id: 0xfffe, interface: null, serial_number: '', probe_type: 'fake', inaccessible: false };
+    const kindOf = (e: unknown) => (e as { kind?: string }).kind ?? 'none';
+    let first = 'resolved';
+    try {
+      await c.info({ probe: probeEntry }, () => {});
+    } catch (e) {
+      first = `${kindOf(e)}: ${(e as Error).message}`;
+    }
+    const firstMs = Math.round(performance.now() - t0);
+    let second = 'resolved';
+    try {
+      await c.listProbes();
+    } catch (e) {
+      second = kindOf(e);
+    }
+    log(`crashtest: in-flight call -> ${first} (${firstMs} ms); later call -> ${second}; crashReason=${JSON.stringify(c.crashReason)}`);
+    log(`CRASH_RESULT=${first.startsWith('worker-crashed') && second === 'worker-crashed' ? 'PASS' : 'FAIL'}`);
+  })();
+}
+
+// ?serialtest=<text>: connect the granted serial port, send a line, expect the firmware's
+// uppercased echo (hardware-tests/firmware/nrf9160-uart-echo), then disconnect.
+if (qs.has('serialtest')) {
+  const text = qs.get('serialtest') || 'browser check';
+  void (async () => {
+    for (let i = 0; i < 20 && !serialMonitor.port; i++) await new Promise((r) => setTimeout(r, 100));
+    if (!serialMonitor.port) {
+      log('serialtest: no granted serial port (click "Choose port…" in section 6 once)');
+      log('SERIAL_RESULT=FAIL');
+      return;
+    }
+    const want = `echo: ${text.toUpperCase()}`;
+    const lines: string[] = [];
+    const got = new Promise<boolean>((resolve) => {
+      serialMonitor.addEventListener('serial-line', (e) => {
+        lines.push((e as CustomEvent<string>).detail);
+        if ((e as CustomEvent<string>).detail === want) resolve(true);
+      });
+      setTimeout(() => resolve(false), 6000);
+    });
+    const t0 = performance.now();
+    await serialMonitor.connect();
+    await new Promise((r) => setTimeout(r, 300));
+    await serialMonitor.send(text);
+    const ok = await got;
+    log(`serialtest: ${lines.length} line(s) in ${Math.round(performance.now() - t0)} ms; ${ok ? 'echo received' : 'echo MISSING'}: ${JSON.stringify(want)}`);
+    await serialMonitor.disconnect();
+    log(`SERIAL_RESULT=${ok ? 'PASS' : 'FAIL'}`);
+  })();
+}
+
 if (qs.has('auto')) {
   const transport = qs.get('transport') ?? 'webusb';
   (document.querySelector(`input[name=transport][value=${transport}]`) as HTMLInputElement).checked = true;
@@ -148,7 +220,24 @@ if (qs.has('auto')) {
     // ?probe=<substring> picks a probe by identifier/serial when several are attached.
     const want = qs.get('probe')?.toLowerCase();
     const chosen = want ? probes.find((p) => `${p.identifier} ${p.serial_number}`.toLowerCase().includes(want)) : probes[0];
-    if (chosen) {
+    if (chosen && qs.get('op') === 'info') {
+      // ?op=info: DP/AP/ROM-table scan without attaching to a target (hardware check for the `info` endpoint).
+      const events: Wire.InfoEvent[] = [];
+      const t0 = performance.now();
+      try {
+        await c.info({ probe: chosen, protocol: (qs.get('protocol') as 'Swd' | 'Jtag') ?? 'Swd' }, (e) => events.push(e));
+        const dps = events.filter((e): e is { ArmDp: Wire.DebugPortInfo } => typeof e === 'object' && 'ArmDp' in e);
+        for (const e of events) log(`info: ${JSON.stringify(e, (_, x) => (typeof x === 'bigint' ? Number(x) : x)).slice(0, 300)}`);
+        const aps = dps.flatMap((d) => d.ArmDp.aps);
+        const names = (n: Wire.ComponentTreeNode): string[] => [n.node, ...n.children.flatMap(names)];
+        const nodes = aps.flatMap((a) => ('MemoryAp' in a ? names(a.MemoryAp.component_tree) : []));
+        log(`info: ${events.length} event(s), ${dps.length} DP(s), ${aps.length} AP(s), ${nodes.length} component node(s) in ${Math.round(performance.now() - t0)} ms`);
+        log(`INFO_RESULT=${dps.length > 0 && aps.length > 0 ? 'PASS' : 'FAIL'}`);
+      } catch (e) {
+        log(`info failed: ${(e as Error).message}`);
+        log('INFO_RESULT=FAIL');
+      }
+    } else if (chosen) {
       probe = chosen;
       const s = await attach();
       if (s && qs.has('fake')) {
@@ -161,7 +250,7 @@ if (qs.has('auto')) {
         log('FAKE_RESULT=PASS');
       } else if (s) {
         await flash.updateComplete;
-        // ?op=: "flash" (default) | "verify" | "erase" | "cycle" = flash, verify (Ok), erase, verify (Mismatch), flash, verify (Ok)
+        // ?op=: "flash" (default) | "verify" | "erase" | "attach" (no flash) | "cycle" = flash, verify (Ok), erase, verify (Mismatch), flash, verify (Ok)
         const op = qs.get('op') ?? 'flash';
         const verdicts: string[] = [];
         flash.addEventListener('verify-done', (e) => verdicts.push(String((e as CustomEvent).detail)));
@@ -176,8 +265,12 @@ if (qs.has('auto')) {
           await flash.verifyOnly();
           log(`cycle verdicts: ${verdicts.join(', ')}`);
           log(`CYCLE_RESULT=${verdicts.join(',') === 'Ok,Mismatch,Ok' ? 'PASS' : 'FAIL'}`);
-        } else await flash.flash();
-        // ?monitor=<seconds>: run the RTT terminal for a while, then stop.
+        } else if (op !== 'attach') await flash.flash();
+        // ?monitor=<seconds>: run the RTT terminal for a while, then stop; "keep" leaves it running.
+        if (qs.get('monitor') === 'keep') {
+          void rtt.start();
+          log('monitor: running until stopped');
+        }
         const secs = Number(qs.get('monitor') ?? 0);
         if (secs > 0 && rtt.bootInfo) {
           const t0 = performance.now();
@@ -191,15 +284,18 @@ if (qs.has('auto')) {
             const e = ev as { kind: string; lines?: { message: string }[]; text?: string };
             if (e.kind === 'defmt') for (const l of e.lines ?? []) seen.push(l.message);
             if (e.kind === 'text') seen.push(e.text ?? '');
+            if (e.kind === 'semihosting') seen.push((e as { data?: string }).data ?? '');
             if (e.kind === 'rtt-discovered' && sendText && session) {
               setTimeout(() => void session!.rttWrite(0, sendText + '\n').then((n) => log(`sent ${n} bytes to down channel 0`), (err) => log(`rtt write failed: ${err}`)), 300);
             }
             orig.call(rtt, ev);
           };
           const run = rtt.start();
-          await new Promise((r) => setTimeout(r, secs * 1000));
-          await rtt.stop();
+          // Stop after the timeout unless the target already exited (semihosting).
+          await Promise.race([run, new Promise((r) => setTimeout(r, secs * 1000))]);
+          if ((rtt as unknown as { running: boolean }).running) await rtt.stop();
           await run;
+          log(`monitor exit: ${JSON.stringify(await run, (_, x) => typeof x === 'bigint' ? Number(x) : x)}`);
           log(`monitor: ${events} events in ${Math.round(performance.now() - t0)} ms; first: ${JSON.stringify(seen.slice(0, 3))}; last: ${JSON.stringify(seen.slice(-1))}`);
           const all = seen.join('');
           const echoOk = !sendText || all.includes(`echo: ${sendText.toUpperCase()}`);

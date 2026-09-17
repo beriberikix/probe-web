@@ -9,7 +9,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use postcard_schema::schema::{DataModelType, DataModelVariant, NamedType};
-use probe_rs_rpc::{ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST};
 
 /// Rust type names that postcard-schema reports (`Vec<u8>`, `Option<Key<T>>`)
 /// mapped to TS-friendly identifiers; generics collapse structurally.
@@ -38,10 +37,9 @@ fn ts_ref(t: &NamedType, named: &mut BTreeMap<String, String>, seen: &mut BTreeS
         ByteArray => "Uint8Array".into(),
         Unit | UnitStruct => "null".into(),
         Option(inner) => format!("({} | null)", ts_ref(inner, named, seen)),
-        NewtypeStruct(inner) => {
+        NewtypeStruct(_) => {
             // e.g. Key<Session> is a struct with key: u64; RpcError(String) newtype.
             define(t, named, seen);
-            let _ = inner;
             ident(t.name)
         }
         // serde-wasm-bindgen serializes `Vec<u8>` as a plain JS Array (only
@@ -108,6 +106,15 @@ const RENAME_ALL: &[(&str, &str)] = &[
     ("RttChannelConfig", "camelCase"),
 ];
 
+/// Recursive fields. postcard-schema cannot express recursion, so probe-rs-rpc's
+/// hand-written `Schema` impls stand in a placeholder (`Vec<()>` for
+/// `ComponentTreeNode::children`); emit the real self-reference instead.
+const RECURSIVE: &[(&str, &str, &str)] = &[("ComponentTreeNode", "children", "Array<ComponentTreeNode>")];
+
+fn recursive_field(ty: &str, field: &str) -> Option<&'static str> {
+    RECURSIVE.iter().find(|(t, f, _)| *t == ty && *f == field).map(|(_, _, ts)| *ts)
+}
+
 fn rename(ty: &str, name: &str) -> String {
     match RENAME_ALL.iter().find(|(t, _)| *t == ty).map(|(_, c)| *c) {
         Some("lowercase") => name.to_ascii_lowercase(),
@@ -140,7 +147,11 @@ fn define(t: &NamedType, named: &mut BTreeMap<String, String>, seen: &mut BTreeS
         Struct(fields) => {
             let mut s = format!("export interface {id} {{\n");
             for f in fields.iter() {
-                s.push_str(&format!("  {}: {};\n", rename(t.name, f.name), ts_ref(f.ty, named, seen)));
+                let ts = match recursive_field(t.name, f.name) {
+                    Some(ts) => ts.to_string(),
+                    None => ts_ref(f.ty, named, seen),
+                };
+                s.push_str(&format!("  {}: {};\n", rename(t.name, f.name), ts));
             }
             s.push('}');
             s
@@ -163,21 +174,6 @@ fn main() {
     let mut endpoints = vec![];
     let mut topics = vec![];
 
-    // Endpoint request/response types come from the per-endpoint type list;
-    // the (path, req_key, resp_key) tuples carry only hashes, so map keys back
-    // to types by hashing each known type's schema the way postcard-rpc does.
-    let mut by_key: BTreeMap<[u8; 8], &NamedType> = BTreeMap::new();
-    let all_types = ENDPOINT_LIST
-        .types
-        .iter()
-        .chain(TOPICS_IN_LIST.types.iter())
-        .chain(TOPICS_OUT_LIST.types.iter());
-    for t in all_types {
-        // Endpoint keys hash (path, schema); we can't invert that here, so key
-        // the map by the schema hash alone and match by trying each path.
-        let _ = t;
-    }
-    let _ = &mut by_key;
 
     // Simpler and exact: emit every named type, then list endpoint paths with
     // their keys. The client already dispatches by key; the JS SDK needs the

@@ -1,0 +1,9 @@
+{
+  "name": "@probe-web/serial",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "WebSerial console for boards whose output is on a UART bridge (not probe-rs)",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "vitest": "^2.1.0" }
+}

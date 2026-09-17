@@ -6,13 +6,18 @@
     ".": "./src/index.ts",
     "./device-picker": "./src/device-picker.ts",
     "./flash-panel": "./src/flash-panel.ts",
-    "./rtt-terminal": "./src/rtt-terminal.ts"
+    "./rtt-terminal": "./src/rtt-terminal.ts",
+    "./target-picker": "./src/target-picker.ts",
+    "./semihosting-console": "./src/semihosting-console.ts",
+    "./serial-monitor": "./src/serial-monitor.ts"
   },
   "dependencies": {
     "@probe-web/client": "*",
     "@probe-web/devices": "*",
+    "@probe-web/artifacts": "*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "lit": "^3.2.0"
+    "lit": "^3.2.0",
+    "@probe-web/serial": "*"
   }
 }

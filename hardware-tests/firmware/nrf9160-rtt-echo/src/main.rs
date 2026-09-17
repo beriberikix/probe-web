@@ -17,7 +17,7 @@ fn main() -> ! {
     };
     let mut up = channels.up.0;
     let mut down = channels.down.0;
-    writeln!(up, "nrf9160-rtt-echo: type a line, it comes back uppercased").ok();
+    writeln!(up, "nrf9160-rtt-echo v2 (rebuilt for watch-and-reflash): type a line").ok();
 
     let mut line = [0u8; 64];
     let mut len = 0usize;

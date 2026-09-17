@@ -1,0 +1,8 @@
+{
+  "name": "@probe-web/artifacts",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "vitest": "^2.1.0" }
+}

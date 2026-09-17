@@ -10,9 +10,27 @@ import type * as Wire from './wire';
 export type { Wire };
 
 let wasmReady: Promise<unknown> | null = null;
+
+/** Whether an ELF links an RTT control block (`_SEGGER_RTT`). Call after `ensureWasm()`. */
+export function elfHasRtt(elf: Uint8Array): boolean {
+  return rttSymbolAddress(elf) !== undefined;
+}
+
+const isNode = !!(globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node;
+
 /** Instantiate the wasm module once. Called implicitly by `Client.connect`. */
 export function ensureWasm(): Promise<unknown> {
-  if (!wasmReady) wasmReady = init();
+  if (!wasmReady) {
+    wasmReady = isNode
+      ? (async () => {
+          // Node's fetch cannot load file: URLs; read the module from disk. The
+          // specifier is a variable so browser bundlers leave it alone.
+          const fsName = 'node:fs/promises';
+          const { readFile } = (await import(/* @vite-ignore */ fsName)) as { readFile(u: URL): Promise<Uint8Array> };
+          return init({ module_or_path: await readFile(new URL('../wasm/probe_web_core_bg.wasm', import.meta.url)) });
+        })()
+      : init();
+  }
   return wasmReady;
 }
 
@@ -29,6 +47,7 @@ export function createLocalWorker(opts: { fake?: boolean } = {}): Worker {
 }
 
 export interface ProbeWebError extends Error {
+  /** e.g. `transport`, `remote`, `probe-in-use-other-tab`, `worker-crashed` */
   kind?: string;
   connectUnderReset?: boolean;
 }
@@ -37,7 +56,7 @@ export type FormatName = 'target' | 'elf' | 'bin' | 'hex' | 'uf2' | 'idf';
 
 export interface FlashJob {
   /** Image bytes, or something fetchable into bytes. */
-  image: Uint8Array | ArrayBuffer | Blob | string;
+  image: Uint8Array | ArrayBuffer | Blob | string | Promise<Uint8Array>;
   /** Name used for upload caching and logs. */
   name?: string;
   format?: FormatName;
@@ -87,6 +106,7 @@ export interface RttChannelConfigInput {
 }
 
 async function toBytes(image: FlashJob['image']): Promise<Uint8Array> {
+  if (image instanceof Promise) return image;
   if (image instanceof Uint8Array) return image;
   if (image instanceof ArrayBuffer) return new Uint8Array(image);
   if (typeof image === 'string') {
@@ -140,10 +160,60 @@ function rttConfig(c: RttChannelConfigInput = {}): Wire.RttChannelConfig {
   };
 }
 
+/** Why a local worker died, once it has (set from its `fatal:` message or `error` event). */
+interface CrashState { reason: string | null }
+
+function crashedError(state: CrashState, cause: unknown): unknown {
+  if (!state.reason) return cause;
+  const err = new Error(`the probe-rs worker crashed: ${state.reason}`) as ProbeWebError & { cause?: unknown };
+  err.kind = 'worker-crashed';
+  err.cause = cause;
+  return err;
+}
+
+/**
+ * Wrap a wasm-bindgen object so that, once the worker behind it has died, its
+ * failures surface as `kind: 'worker-crashed'` with the worker's reason rather
+ * than a generic transport error. Objects it returns (sessions, cores) are
+ * wrapped too.
+ */
+function guardCrash<T extends object>(raw: T, state: CrashState): T {
+  const wrap = (x: unknown) => (x && typeof x === 'object' && '__wbg_ptr' in x ? guardCrash(x, state) : x);
+  return new Proxy(raw, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop, target);
+      if (typeof value !== 'function' || prop === 'constructor' || prop === 'free') return value;
+      return (...args: unknown[]) => {
+        let result: unknown;
+        try {
+          result = (value as (...a: unknown[]) => unknown).apply(target, args);
+        } catch (e) {
+          throw crashedError(state, e);
+        }
+        if (result instanceof Promise) {
+          return result.then(wrap, (e) => { throw crashedError(state, e); });
+        }
+        return wrap(result);
+      };
+    },
+  });
+}
+
 export class Client {
   private worker: Worker | null = null;
   private releaseLock: (() => void) | null = null;
-  private constructor(readonly raw: ProbeWebClient, readonly transport: Transport['kind']) {}
+  private crash: CrashState | null = null;
+  /** Why the local worker died, or `null` while it is alive (always `null` over WebSocket). */
+  get crashReason(): string | null {
+    return this.crash?.reason ?? null;
+  }
+  readonly raw: ProbeWebClient;
+  readonly transport: Transport['kind'];
+  // Plain fields (no parameter properties): Node runs this file with type stripping only.
+  private constructor(raw: ProbeWebClient, transport: Transport['kind']) {
+    this.raw = raw;
+    this.transport = transport;
+  }
 
   /** Close the transport: terminates the worker (releasing the USB device and
    *  the cross-tab lock) or drops the WebSocket. The client is unusable after. */
@@ -162,9 +232,17 @@ export class Client {
       return new Client(raw, 'websocket');
     }
     const worker = transport.worker ?? createLocalWorker({ fake: transport.fake });
+    // Listen before connecting, so a crash during start-up is attributed too. This
+    // listener runs before the transport's own handler closes the channel.
+    const crash: CrashState = { reason: null };
+    worker.addEventListener('message', (ev) => {
+      if (typeof ev.data === 'string' && ev.data.startsWith('fatal:')) crash.reason ??= ev.data.slice('fatal:'.length);
+    });
+    worker.addEventListener('error', (ev) => { crash.reason ??= ev.message || 'uncaught error in the worker'; });
     const raw = await ProbeWebClient.connectWorker(worker);
-    const client = new Client(raw, 'webusb');
+    const client = new Client(guardCrash(raw, crash), 'webusb');
     client.worker = worker;
+    client.crash = crash;
     return client;
   }
 
@@ -188,6 +266,20 @@ export class Client {
   }
   loadChipFamily(yaml: string): Promise<void> {
     return this.raw.loadChipFamily(yaml);
+  }
+
+  /** Enumerate what is behind a probe (DP/AP, ROM tables, IDCODEs) with no chip definition. */
+  info(opts: { probe: Wire.DebugProbeEntry; protocol?: 'Swd' | 'Jtag'; speedKhz?: number; connectUnderReset?: boolean; targetSel?: number; scanChain?: number[] }, onEvent: (e: Wire.InfoEvent) => void): Promise<void> {
+    const req: Wire.TargetInfoRequest = {
+      probe: opts.probe,
+      speed: opts.speedKhz ?? null,
+      connect_under_reset: opts.connectUnderReset ?? false,
+      dry_run: false,
+      target_sel: opts.targetSel ?? null,
+      protocol: opts.protocol ?? 'Swd',
+      scan_chain: opts.scanChain ?? [],
+    };
+    return this.raw.info(req, onEvent as (e: unknown) => void);
   }
 
   async attach(opts: AttachOptions): Promise<Session> {
@@ -219,7 +311,10 @@ export class Client {
 }
 
 export class Session {
-  constructor(readonly raw: ProbeWebSession) {}
+  readonly raw: ProbeWebSession;
+  constructor(raw: ProbeWebSession) {
+    this.raw = raw;
+  }
 
   targetMetadata(): Promise<Wire.WireSessionTargetMetadata> {
     return this.raw.targetMetadata() as Promise<Wire.WireSessionTargetMetadata>;
@@ -260,6 +355,11 @@ export class Session {
     ) as Promise<Wire.RttClientData>;
   }
 
+  /** Monitor without RTT from now on (the server stops scanning for a control block). */
+  clearRttClient(): void {
+    this.raw.clearRttClient();
+  }
+
   /** Provide the ELF whose defmt table decodes `Defmt` channels. */
   setDefmtElf(elf: Uint8Array): boolean {
     return this.raw.setDefmtElf(elf);
@@ -297,7 +397,10 @@ export class Session {
 }
 
 export class Core {
-  constructor(readonly raw: ProbeWebCore) {}
+  readonly raw: ProbeWebCore;
+  constructor(raw: ProbeWebCore) {
+    this.raw = raw;
+  }
   halt(timeoutMs = 500): Promise<Wire.WireCoreInformation> {
     return this.raw.halt(timeoutMs) as Promise<Wire.WireCoreInformation>;
   }

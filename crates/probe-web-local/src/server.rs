@@ -4,7 +4,7 @@ use std::{collections::HashMap, convert::Infallible, future::Future, io::Cursor,
 
 use postcard_rpc::{
     header::{VarHeader, VarSeq},
-    server::{Sender as PostcardSender, SpawnContext, WireRxErrorKind},
+    server::{Sender as PostcardSender, SpawnContext},
 };
 use probe_rs::{
     MemoryInterface, Permissions,
@@ -17,10 +17,10 @@ use probe_rs_rpc::{
     AttachEndpoint, BootEndpoint, BuildEndpoint, CancelTopic, ChipInfoEndpoint, CoreHaltEndpoint,
     CoreRunEndpoint, CoreStatusEndpoint, CreateRttClientEndpoint, CreateTempFileEndpoint, ENDPOINT_LIST,
     EraseAllEndpoint, FlashEndpoint, GetRttChannelsEndpoint, ListChipFamiliesEndpoint, ListProbesEndpoint,
-    LoadChipFamilyEndpoint, LoadRegionEndpoint, MonitorEndpoint, NewFlashLoaderEndpoint, NoResponse,
+    LoadChipFamilyEndpoint, LoadRegionEndpoint, MonitorEndpoint, TargetInfoEndpoint, NewFlashLoaderEndpoint, NoResponse,
     ProgressEventTopic, ReadBytesEndpoint, ReadMemory8Endpoint, ReadMemory16Endpoint, ReadMemory32Endpoint,
     ReadMemory64Endpoint, ResetCoreAndHaltEndpoint, ResetCoreEndpoint, RpcError, RpcResult, RttDownEndpoint,
-    RttTopic, Session, TOPICS_IN_LIST, TOPICS_OUT_LIST, TargetMetadataEndpoint, TempFileDataEndpoint,
+    RttTopic, SemihostingTopic, Session, TOPICS_IN_LIST, TOPICS_OUT_LIST, TargetMetadataEndpoint, TempFileDataEndpoint,
     TokioSpawner, VerifyEndpoint, WriteMemory8Endpoint, WriteMemory16Endpoint, WriteMemory32Endpoint,
     WriteMemory64Endpoint,
     chip::{Chip, ChipData, ChipFamily, ChipInfoRequest, ChipInfoResponse, JEP106Code, ListFamiliesResponse, LoadChipFamilyRequest},
@@ -37,17 +37,16 @@ use probe_rs_rpc::{
     monitor::{ChannelInfo, MonitorExitReason, MonitorMode, MonitorRequest, MonitorResponse, RttEvent},
     probe::{AttachRequest, AttachResponse, AttachResult, DebugProbeEntry, ListProbesResponse, WireProtocol},
     reset::{ResetCoreAndHaltRequest, ResetCoreRequest},
-    rtt_client::{CreateRttClientRequest, CreateRttClientResponse, RttChannelMeta, RttChannelRequest, RttChannels, RttChannelsResponse, RttClientData, RttDownRequest, RttDownResponse, ScanRegion},
+    rtt_client::{CreateRttClientRequest, CreateRttClientResponse, RttChannelMeta, RttChannelRequest, RttChannels, RttChannelsResponse, RttClientData, RttDownRequest, RttDownResponse},
     rtt_config::{ChannelMode, RttChannelConfig},
-    transport::memory::{WireRx, WireTx},
+    transport::memory::WireTx,
 };
-use tokio::sync::{Mutex, mpsc::{Receiver, Sender}};
+use tokio::sync::{Mutex, mpsc::Sender};
 use tokio_util::sync::CancellationToken;
 
 use crate::{convert, log};
 
 pub type WireTxImpl = WireTx<Sender<Vec<u8>>>;
-pub type WireRxImpl = WireRx<Receiver<Result<Vec<u8>, WireRxErrorKind>>>;
 
 fn err<E: std::fmt::Display>(e: E) -> RpcError {
     RpcError::from(e.to_string())
@@ -59,6 +58,9 @@ struct RttCfg {
     default: RttChannelConfig,
     /// The image being flashed writes the control block itself; do not clear it.
     keep_control_block: bool,
+    /// Where the control block was last found; later attaches go straight there
+    /// instead of rescanning the whole region (a RAM scan takes ~0.5 s over WebUSB).
+    found_at: Option<u64>,
 }
 
 pub struct Inner {
@@ -358,10 +360,11 @@ async fn build(ctx: &mut Ctx, _h: VarHeader, req: BuildRequest) -> BuildResponse
         keep_cb = loader.has_data_for_address(0);
         (loader, boot)
     };
-    let _ = keep_cb;
     if let Some(rtt) = req.rtt_client {
         if let Some(cfg) = inner.rtt.get_mut(&rtt.id()) {
-            cfg.keep_control_block = true;
+            cfg.keep_control_block = keep_cb;
+            // A new image can move the control block.
+            cfg.found_at = None;
         }
     }
     let key = probe_rs_rpc::Key::<probe_rs_rpc::FlashLoader>::new();
@@ -450,6 +453,7 @@ async fn create_rtt_client(ctx: &mut Ctx, _h: VarHeader, req: CreateRttClientReq
             configs: req.config,
             default: req.default_config,
             keep_control_block: false,
+            found_at: None,
         },
     );
     Ok(RttClientData { handle: key, core_id: 0 })
@@ -486,34 +490,112 @@ impl LiveRtt {
     }
 }
 
+/// Attach RTT for `rtt_client`: at the cached control-block address when known
+/// (falling back to a scan if the block moved), else by scanning the region.
+async fn attach_rtt(core: &mut probe_rs::Core<'_>, region: &probe_rs::rtt::ScanRegion, found_at: Option<u64>) -> Result<Rtt, RpcError> {
+    if let Some(ptr) = found_at {
+        if let Ok(rtt) = Rtt::attach_at(core, ptr).await {
+            return Ok(rtt);
+        }
+    }
+    Rtt::attach_region(core, region).await.map_err(err)
+}
+
 async fn get_rtt_channels(ctx: &mut Ctx, _h: VarHeader, req: RttChannelRequest) -> RttChannelsResponse {
     let mut inner = ctx.inner.lock().await;
-    let cfg_region = inner.rtt.get(&req.rtt_client.id()).map(|c| c.scan_region.clone()).ok_or_else(|| err("unknown rtt client"))?;
-    let session = inner.session(req.sessid)?;
-    let mut core = session.core(0).await.map_err(err)?;
-    let mut rtt = Rtt::attach_region(&mut core, &cfg_region).await.map_err(err)?;
-    Ok(RttChannels {
-        up: rtt.up_channels().iter().map(|c| RttChannelMeta { number: c.number() as u32, name: c.name().unwrap_or("").into() }).collect(),
-        down: rtt.down_channels().iter().map(|c| RttChannelMeta { number: c.number() as u32, name: c.name().unwrap_or("").into() }).collect(),
-    })
+    let (cfg_region, found_at) = inner.rtt.get(&req.rtt_client.id()).map(|c| (c.scan_region.clone(), c.found_at)).ok_or_else(|| err("unknown rtt client"))?;
+    let (channels, ptr) = {
+        let session = inner.session(req.sessid)?;
+        let mut core = session.core(0).await.map_err(err)?;
+        let mut rtt = attach_rtt(&mut core, &cfg_region, found_at).await?;
+        let channels = RttChannels {
+            up: rtt.up_channels().iter().map(|c| RttChannelMeta { number: c.number() as u32, name: c.name().unwrap_or("").into() }).collect(),
+            down: rtt.down_channels().iter().map(|c| RttChannelMeta { number: c.number() as u32, name: c.name().unwrap_or("").into() }).collect(),
+        };
+        (channels, rtt.ptr())
+    };
+    if let Some(cfg) = inner.rtt.get_mut(&req.rtt_client.id()) {
+        cfg.found_at = Some(ptr);
+    }
+    Ok(channels)
 }
 
 async fn write_rtt_down(ctx: &mut Ctx, _h: VarHeader, req: RttDownRequest) -> RttDownResponse {
     let mut inner = ctx.inner.lock().await;
-    let region = inner.rtt.get(&req.rtt_client.id()).map(|c| c.scan_region.clone()).ok_or_else(|| err("unknown rtt client"))?;
-    let session = inner.session(req.sessid)?;
-    let mut core = session.core(0).await.map_err(err)?;
-    let mut rtt = Rtt::attach_region(&mut core, &region).await.map_err(err)?;
-    let ch = rtt.down_channel(req.channel as usize).ok_or_else(|| err("no such down channel"))?;
-    let n = ch.write(&mut core, &req.data).await.map_err(err)?;
+    let (region, found_at) = inner.rtt.get(&req.rtt_client.id()).map(|c| (c.scan_region.clone(), c.found_at)).ok_or_else(|| err("unknown rtt client"))?;
+    let (n, ptr) = {
+        let session = inner.session(req.sessid)?;
+        let mut core = session.core(0).await.map_err(err)?;
+        let mut rtt = attach_rtt(&mut core, &region, found_at).await?;
+        let ptr = rtt.ptr();
+        let ch = rtt.down_channel(req.channel as usize).ok_or_else(|| err("no such down channel"))?;
+        (ch.write(&mut core, &req.data).await.map_err(err)?, ptr)
+    };
+    if let Some(cfg) = inner.rtt.get_mut(&req.rtt_client.id()) {
+        cfg.found_at = Some(ptr);
+    }
     Ok(n as u32)
 }
 
 /// The run loop: boot (or attach), then poll the core status and RTT until
 /// cancelled, the core halts, or the connection drops.
+/// `info`: open the probe (no target attach) and stream DP/AP/ROM-table findings.
+async fn target_info(_ctx: Ctx, header: VarHeader, req: probe_rs_rpc::info::TargetInfoRequest, sender: PostcardSender<WireTxImpl>) {
+    let result = target_info_impl(&req, &sender).await;
+    let _ = sender.reply::<TargetInfoEndpoint>(header.seq_no, &result).await;
+}
+
+async fn target_info_impl(req: &probe_rs_rpc::info::TargetInfoRequest, sender: &PostcardSender<WireTxImpl>) -> NoResponse {
+    // Test hook (fake build only): a scan of probe ffff:fffe panics, so browser tests
+    // can check that a crashed worker fails in-flight calls instead of hanging them.
+    #[cfg(feature = "fake")]
+    if (req.probe.vendor_id, req.probe.product_id) == (0xFFFF, 0xFFFE) {
+        panic!("test panic requested through the fake probe");
+    }
+    #[cfg(feature = "fake")]
+    let fake = (req.probe.vendor_id, req.probe.product_id) == FAKE_VID_PID;
+    #[cfg(not(feature = "fake"))]
+    let fake = false;
+    let mut probe = if fake {
+        // The fake probe has no debug port; its DP access returns NotImplemented, so the
+        // scan reports that as an event instead of panicking the worker.
+        #[cfg(feature = "fake")]
+        {
+            probe_rs::probe::Probe::from_specific_probe(Box::new(probe_rs::integration::FakeProbe::with_mocked_core()))
+        }
+        #[cfg(not(feature = "fake"))]
+        unreachable!("fake is false without the feature")
+    } else {
+        let probes = Lister::new().list_all().await;
+        let info = probes
+            .iter()
+            .find(|p| {
+                p.vendor_id == req.probe.vendor_id
+                    && p.product_id == req.probe.product_id
+                    && (req.probe.serial_number.is_empty() || p.serial_number.as_deref() == Some(req.probe.serial_number.as_str()))
+            })
+            .ok_or_else(|| err("probe not found"))?;
+        info.open().await.map_err(err)?
+    };
+    if let Some(speed) = req.speed {
+        let _ = probe.set_speed(speed).await;
+    }
+    let mut ictx = crate::info::InfoCtx { sender };
+    crate::info::show_info(&mut ictx, probe, &req.scan_chain, req.protocol, req.connect_under_reset, req.target_sel)
+        .await
+        .map_err(err)?;
+    Ok(())
+}
+
 async fn monitor(ctx: Ctx, header: VarHeader, req: MonitorRequest, sender: PostcardSender<WireTxImpl>) {
     let result = monitor_impl(&ctx, &req, &sender).await;
     let _ = sender.reply::<MonitorEndpoint>(header.seq_no, &result).await;
+}
+
+/// The page stopped listening (tab closed, client dropped): end the monitor.
+fn client_gone() -> MonitorExitReason {
+    log("monitor: client disconnected; stopping");
+    MonitorExitReason::UserExit
 }
 
 async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<WireTxImpl>) -> MonitorResponse {
@@ -521,7 +603,7 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
     *ctx.cancel.borrow_mut() = CancellationToken::new();
     let token = ctx.cancel.borrow().clone();
 
-    let (scan_region, keep_cb, modes): (Option<probe_rs::rtt::ScanRegion>, bool, Vec<(u32, Option<ChannelMode>)>) = {
+    let (scan_region, keep_cb, found_at, modes): (Option<probe_rs::rtt::ScanRegion>, bool, Option<u64>, Vec<(u32, Option<ChannelMode>)>) = {
         let inner = ctx.inner.lock().await;
         match req.options.rtt_client.and_then(|k| inner.rtt.get(&k.id())) {
             Some(cfg) => {
@@ -531,9 +613,9 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                     .filter_map(|c| c.channel_number.map(|n| (n, c.mode)))
                     .collect();
                 modes.push((u32::MAX, cfg.default.mode));
-                (Some(cfg.scan_region.clone()), cfg.keep_control_block, modes)
+                (Some(cfg.scan_region.clone()), cfg.keep_control_block, cfg.found_at, modes)
             }
-            None => (None, false, vec![]),
+            None => (None, false, None, vec![]),
         }
     };
 
@@ -551,6 +633,8 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
     let mut needs_resume = matches!(req.mode, MonitorMode::Run(_));
 
     let mut live: Option<LiveRtt> = None;
+    let mut learned_ptr: Option<u64> = None;
+    let mut semihosting = crate::semihosting::ConsoleSemihosting::default();
     let mut buf = vec![0u8; 4096];
     let mut polls: u64 = 0;
     let started = web_time::Instant::now();
@@ -572,9 +656,10 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                     let due = last_rtt_attempt.map(|t| t.elapsed() >= Duration::from_millis(200)).unwrap_or(true);
                     if due && started.elapsed() < Duration::from_secs(10) {
                         last_rtt_attempt = Some(web_time::Instant::now());
-                        let attempt = Rtt::attach_region(&mut core, region).await;
+                        let attempt = attach_rtt(&mut core, region, found_at).await;
                         if let Ok(mut rtt) = attempt {
                             log(&format!("RTT attached after {:?}", started.elapsed()));
+                            learned_ptr = Some(rtt.ptr());
                             for (n, mode) in &modes {
                                 if let Some(mode) = mode {
                                     let targets: Vec<usize> = if *n == u32::MAX {
@@ -584,16 +669,22 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                                     };
                                     for i in targets {
                                         if let Some(ch) = rtt.up_channel(i) {
-                                            let _ = ch.set_mode(&mut core, channel_mode(*mode)).await;
+                                            if let Err(e) = ch.set_mode(&mut core, channel_mode(*mode)).await {
+                                                log(&format!("RTT: could not set the mode of up channel {i}: {e}"));
+                                            }
                                         }
                                     }
                                 }
                             }
                             let mut l = LiveRtt { rtt };
                             let (up, down) = l.info();
-                            let _ = sender
+                            if sender
                                 .publish::<RttTopic>(VarSeq::Seq2(0), &RttEvent::Discovered { up_channels: up, down_channels: down })
-                                .await;
+                                .await
+                                .is_err()
+                            {
+                                return Ok(client_gone());
+                            }
                             live = Some(l);
                         }
                     }
@@ -608,9 +699,13 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
                     match ch.read(&mut core, &mut buf).await {
                         Ok(n) if n > 0 => {
                             any = true;
-                            let _ = sender
+                            if sender
                                 .publish::<RttTopic>(VarSeq::Seq2(0), &RttEvent::Output { channel: i as u32, bytes: buf[..n].to_vec() })
-                                .await;
+                                .await
+                                .is_err()
+                            {
+                                return Ok(client_gone());
+                            }
                         }
                         Ok(_) => {}
                         Err(e) => log(&format!("rtt read error on channel {i}: {e}")),
@@ -632,8 +727,28 @@ async fn monitor_impl(ctx: &Ctx, req: &MonitorRequest, sender: &PostcardSender<W
             let status = core.status().await.map_err(err)?;
             if let probe_rs::CoreStatus::Halted(reason) = status {
                 if !needs_resume {
-                    return Ok(MonitorExitReason::Halted(convert::halt_reason(reason)));
+                    let probe_rs::HaltReason::Breakpoint(probe_rs::BreakpointCause::Semihosting(cmd)) = reason else {
+                        return Ok(MonitorExitReason::Halted(convert::halt_reason(reason)));
+                    };
+                    match semihosting.handle(cmd, &mut core).await.map_err(err)? {
+                        crate::semihosting::Outcome::Exit(exit) => return Ok(exit),
+                        crate::semihosting::Outcome::Continue(events) => {
+                            for ev in &events {
+                                if sender.publish::<SemihostingTopic>(VarSeq::Seq2(0), ev).await.is_err() {
+                                    return Ok(client_gone());
+                                }
+                            }
+                            core.run().await.map_err(err)?;
+                            // Output often comes in bursts of semihosting calls.
+                            next_poll = Duration::ZERO;
+                        }
+                    }
                 }
+            }
+        }
+        if let (Some(ptr), Some(key)) = (learned_ptr.take(), req.options.rtt_client) {
+            if let Some(cfg) = ctx.inner.lock().await.rtt.get_mut(&key.id()) {
+                cfg.found_at = Some(ptr);
             }
         }
         probe_rs::probe::usb_util::wait(next_poll).await;
@@ -766,6 +881,7 @@ pub const LOCAL_ENDPOINT_LIST: postcard_rpc::EndpointMap = postcard_rpc::Endpoin
     (<CreateRttClientEndpoint as postcard_rpc::Endpoint>::PATH, <CreateRttClientEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <CreateRttClientEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
     (<GetRttChannelsEndpoint as postcard_rpc::Endpoint>::PATH, <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <GetRttChannelsEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
     (<RttDownEndpoint as postcard_rpc::Endpoint>::PATH, <RttDownEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <RttDownEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
+    (<TargetInfoEndpoint as postcard_rpc::Endpoint>::PATH, <TargetInfoEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <TargetInfoEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
     (<MonitorEndpoint as postcard_rpc::Endpoint>::PATH, <MonitorEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <MonitorEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
     (<TargetMetadataEndpoint as postcard_rpc::Endpoint>::PATH, <TargetMetadataEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <TargetMetadataEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
     (<ResetCoreEndpoint as postcard_rpc::Endpoint>::PATH, <ResetCoreEndpoint as postcard_rpc::Endpoint>::REQ_KEY, <ResetCoreEndpoint as postcard_rpc::Endpoint>::RESP_KEY),
@@ -815,6 +931,7 @@ postcard_rpc::define_dispatch! {
         | GetRttChannelsEndpoint    | async     | get_rtt_channels   |
         | RttDownEndpoint           | async     | write_rtt_down     |
         | MonitorEndpoint           | spawn     | monitor            |
+        | TargetInfoEndpoint        | spawn     | target_info        |
         | TargetMetadataEndpoint    | async     | target_metadata    |
         | ResetCoreEndpoint         | async     | reset              |
         | ResetCoreAndHaltEndpoint  | async     | reset_and_halt     |

@@ -1,0 +1,8 @@
+{
+  "name": "@probe-web/app-inspect",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": { "dev": "vite --port 5174 --strictPort", "build": "tsc --noEmit && vite build" },
+  "dependencies": { "@probe-web/client": "*", "@probe-web/devices": "*", "@probe-web/ui": "*", "lit": "^3.2.0" }
+}

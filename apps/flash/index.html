@@ -37,12 +37,17 @@
   <label>protocol <select id="protocol"><option value="">auto</option><option>Swd</option><option>Jtag</option></select></label>
   <button id="attach">Attach</button>
   <span id="attach-status" class="muted"></span>
+  <probe-target-picker id="targets"></probe-target-picker>
 
   <h2>3. Flash</h2>
   <probe-flash-panel id="flash"></probe-flash-panel>
 
   <h2>4. RTT</h2>
   <probe-rtt-terminal id="rtt"></probe-rtt-terminal>
+  <h2>5. Semihosting</h2>
+  <probe-semihosting-console id="semi"></probe-semihosting-console>
+  <h2>6. Serial</h2>
+  <probe-serial-monitor id="serial"></probe-serial-monitor>
 
   <pre class="log" id="log"></pre>
   <script type="module" src="/src/main.ts"></script>

@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { FlashJob, FormatName, Session, Wire } from '@probe-web/client';
+import { FileArtifact, forgetHandle, hasFileSystemAccess, pickFile, recallHandle, rememberHandle } from '@probe-web/artifacts';
 
 interface Bar { operation: string; total: number | null; done: number; state: 'pending' | 'running' | 'done' | 'failed'; startedAt: number }
 
@@ -33,6 +34,13 @@ export class ProbeFlashPanel extends LitElement {
   @property({ type: Boolean, attribute: 'keep-unwritten' }) keepUnwritten = false;
 
   @state() private file: File | null = null;
+  /** A watched file picked with the File System Access API. */
+  @state() private artifact: FileArtifact | null = null;
+  @state() private autoReflash = true;
+  @state() private watching = false;
+  private stopWatch: (() => void) | null = null;
+  /** Key under which the picked handle is remembered across reloads. */
+  @property({ attribute: 'remember-as' }) rememberAs = 'flash-panel';
   @state() private format: FormatName = 'target';
   @state() private baseAddress = '';
   @state() private bars: Bar[] = [];
@@ -60,18 +68,103 @@ export class ProbeFlashPanel extends LitElement {
     }
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    void this.restoreArtifact();
+  }
+  disconnectedCallback() {
+    this.stopWatch?.();
+    super.disconnectedCallback();
+  }
+
+  /** A handle remembered from a previous visit whose permission has lapsed; resumed by a click. */
+  @state() private remembered: FileArtifact | null = null;
+
+  private async restoreArtifact() {
+    const a = await recallHandle(this.rememberAs);
+    if (!a) return;
+    // Only take over silently when the browser still grants read access; otherwise
+    // an explicitly provided `job` (e.g. a manifest image) must keep working and
+    // re-granting needs a user gesture anyway.
+    if (await a.hasPermission()) this.useArtifact(a);
+    else this.remembered = a;
+  }
+
+  async resumeWatch() {
+    const a = this.remembered;
+    if (!a) return;
+    try {
+      if (!(await a.ensurePermission())) throw new Error('read permission for the remembered file was not granted');
+      this.remembered = null;
+      this.useArtifact(a);
+    } catch (e) {
+      this.result = `Failed: ${(e as Error).message ?? e}`;
+    }
+  }
+
+  async forgetRemembered() {
+    this.remembered = null;
+    await forgetHandle(this.rememberAs);
+  }
+
+  async pickAndWatch() {
+    try {
+      const a = await pickFile();
+      await rememberHandle(this.rememberAs, a.handle);
+      this.useArtifact(a);
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') this.result = `Failed: ${(e as Error).message ?? e}`;
+    }
+  }
+
+  private useArtifact(a: FileArtifact) {
+    this.stopWatch?.();
+    this.artifact = a;
+    this.file = null;
+    if (this.format === 'target') {
+      const ext = a.name.split('.').pop()?.toLowerCase();
+      if (ext === 'bin') this.format = 'bin';
+      else if (ext === 'hex' || ext === 'ihex') this.format = 'hex';
+      else if (ext === 'uf2') this.format = 'uf2';
+      else this.format = 'elf';
+    }
+    this.stopWatch = a.watch((change) => {
+      this.dispatchEvent(new CustomEvent('artifact-changed', { detail: change, bubbles: true, composed: true }));
+      if (this.autoReflash && this.session && !this.busy) void this.flash();
+    });
+    this.watching = true;
+  }
+
+  /** Stop watching and forget the picked file. */
+  clearArtifact() {
+    this.stopWatch?.();
+    this.stopWatch = null;
+    this.artifact = null;
+    this.watching = false;
+  }
+
   get effectiveJob(): FlashJob | null {
-    const image = this.file ?? this.job?.image;
+    const image = this.file ?? (this.artifact ? this.artifactBytes : undefined) ?? this.job?.image;
     if (!image) return null;
     const addr = this.baseAddress.trim();
     return {
       image,
-      name: this.file?.name ?? this.job?.name,
+      name: this.file?.name ?? this.artifact?.name ?? this.job?.name,
       format: this.format,
       baseAddress: addr ? BigInt(addr) : this.job?.baseAddress,
       skip: this.job?.skip,
       options: { ...this.job?.options, verify: this.verify, doChipErase: this.chipErase, keepUnwrittenBytes: this.keepUnwritten },
     };
+  }
+
+  /** Lazily read the watched file so `effectiveJob` stays synchronous. */
+  private get artifactBytes(): Promise<Uint8Array> | undefined {
+    const a = this.artifact;
+    if (!a) return undefined;
+    return (async () => {
+      if (!(await a.ensurePermission())) throw new Error('read permission for the watched file was not granted');
+      return a.bytes();
+    })();
   }
 
   private onProgress = (e: Wire.ProgressEvent) => {
@@ -168,7 +261,14 @@ export class ProbeFlashPanel extends LitElement {
     return html`
       <div class="row">
         <input type="file" @change=${this.onFile} ?disabled=${this.busy}>
-        ${this.job && !this.file ? html`<span>preset: ${this.job.name ?? 'image'}</span>` : nothing}
+        ${hasFileSystemAccess() ? html`<button @click=${this.pickAndWatch} ?disabled=${this.busy}>Pick file & watch…</button>` : nothing}
+        ${this.remembered && !this.artifact ? html`<span>last watched <b>${this.remembered.name}</b>
+          <button @click=${this.resumeWatch} ?disabled=${this.busy}>Resume watching</button>
+          <button @click=${this.forgetRemembered}>✕</button></span>` : nothing}
+        ${this.artifact ? html`<span>watching <b>${this.artifact.name}</b>${this.watching ? '' : ' (click Flash to re-grant access)'}
+          <label><input type="checkbox" .checked=${this.autoReflash} @change=${(e: Event) => (this.autoReflash = (e.target as HTMLInputElement).checked)}> re-flash on change</label>
+          <button @click=${this.clearArtifact}>✕</button></span>` : nothing}
+        ${this.job && !this.file && !this.artifact ? html`<span>preset: ${this.job.name ?? 'image'}</span>` : nothing}
         <label>format
           <select .value=${this.format} @change=${(e: Event) => (this.format = (e.target as HTMLSelectElement).value as FormatName)} ?disabled=${this.busy}>
             ${(['target', 'elf', 'bin', 'hex', 'uf2', 'idf'] as FormatName[]).map((f) => html`<option value=${f} ?selected=${f === this.format}>${f}</option>`)}

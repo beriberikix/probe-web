@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 fake = []
 
 [dependencies]
+anyhow = "1"
 # The async fork with the nusb 0.2.7 WebUSB port. Replaced by crates.io probe-rs once the async port lands upstream.
 probe-rs = { path = "../../../probe-rs/probe-rs", default-features = false, features = ["builtin-targets"] }
 probe-rs-rpc = { path = "../../../prs-wasm-rpc/probe-rs-rpc" }

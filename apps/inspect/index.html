@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>probe-web inspect</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; margin: 0; padding: 16px; max-width: 960px; margin-inline: auto; color: #111; }
+    h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 18px 0 6px; }
+    .muted { color: #666; } .err { color: #b91c1c; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 10px 0; }
+    label { margin-right: 10px; } input[type=text] { font: inherit; } button { font: inherit; padding: 6px 10px; }
+    pre { background: #f5f5f5; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+    details { margin: 4px 0 4px 12px; } summary { cursor: pointer; font-family: ui-monospace, monospace; font-size: 12px; }
+    .kv { font-family: ui-monospace, monospace; font-size: 12px; margin-left: 24px; }
+  </style>
+</head>
+<body>
+  <h1>probe-web inspect</h1>
+  <p class="muted">What is behind a probe, with no chip definition: debug port, access ports, ROM tables, JTAG IDCODEs (`probe-rs info` in a page).</p>
+  <fieldset>
+    <legend>transport</legend>
+    <label><input type="radio" name="transport" value="webusb" checked> WebUSB</label>
+    <label><input type="radio" name="transport" value="websocket"> WebSocket</label>
+    <label>url <input type="text" id="ws-url" value="ws://127.0.0.1:3000" size="24"></label>
+    <label>token <input type="text" id="ws-token" size="10"></label>
+    <button id="connect">Connect</button>
+    <span id="conn-status" class="muted"></span>
+  </fieldset>
+  <h2>Probe</h2>
+  <probe-device-picker id="picker"></probe-device-picker>
+  <h2>Scan</h2>
+  <label>protocol <select id="protocol"><option>Swd</option><option>Jtag</option></select></label>
+  <label><input type="checkbox" id="cur"> connect under reset</label>
+  <button id="scan">Scan</button>
+  <span id="scan-status" class="muted"></span>
+  <div id="results"></div>
+  <pre id="log"></pre>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

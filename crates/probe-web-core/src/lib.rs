@@ -105,6 +105,21 @@ impl ProbeWebClient {
         self.client.load_chip_family(yaml).await.map_err(client_err)
     }
 
+    /// Scan the debug port(s) behind a probe without a chip definition: DP/AP
+    /// enumeration, ROM tables, JTAG IDCODEs. `request` is a `TargetInfoRequest`;
+    /// every `InfoEvent` goes to `on_event`.
+    pub async fn info(&self, request: JsValue, on_event: js_sys::Function) -> Result<(), JsValue> {
+        let request: probe_rs_rpc::info::TargetInfoRequest = from_js(request)?;
+        self.client
+            .info(request, async |event| {
+                if let Ok(v) = to_js(&event) {
+                    let _ = on_event.call1(&JsValue::NULL, &v);
+                }
+            })
+            .await
+            .map_err(client_err)
+    }
+
     /// Open a probe and attach to a target. `request` is an `AttachRequest`.
     /// Rejects with `kind` = `probe-not-found` | `probe-in-use` | `open-failed` | `attach-failed`.
     pub async fn attach(&self, request: JsValue) -> Result<ProbeWebSession, JsValue> {
@@ -249,6 +264,13 @@ impl ProbeWebSession {
             decoders: rtt::RttDecoders::new(configs, default_config),
         });
         to_js(&data)
+    }
+
+    /// Forget the RTT client so the next `monitor` runs without RTT polling
+    /// (e.g. firmware that only uses semihosting).
+    #[wasm_bindgen(js_name = clearRttClient)]
+    pub fn clear_rtt_client(&self) {
+        *self.rtt.borrow_mut() = None;
     }
 
     /// Provide the ELF whose defmt table decodes `Defmt` channels. Resolves

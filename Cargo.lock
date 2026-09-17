@@ -2039,6 +2039,7 @@ dependencies = [
 name = "probe-web-local"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "console_error_panic_hook",
  "futures",
  "js-sys",

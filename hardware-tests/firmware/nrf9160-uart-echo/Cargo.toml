@@ -1,0 +1,16 @@
+[package]
+name = "nrf9160-uart-echo"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "1"
+
+[profile.release]
+debug = true
+opt-level = "s"

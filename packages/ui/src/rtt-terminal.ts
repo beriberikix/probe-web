@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import xtermCss from '@xterm/xterm/css/xterm.css?inline';
-import type { MonitorEvent, Session, Wire } from '@probe-web/client';
+import { elfHasRtt, type MonitorEvent, type Session, type Wire } from '@probe-web/client';
 
 /**
  * `<probe-rtt-terminal>`: runs the monitor loop and shows RTT (String or
@@ -58,20 +58,32 @@ export class ProbeRttTerminal extends LitElement {
     }
   }
 
-  async start() {
-    if (!this.session || this.running) return;
+  /** Resolves with the monitor's exit reason, or `null` if it failed or was not started. */
+  async start(): Promise<Wire.MonitorExitReason | null> {
+    if (!this.session || this.running) return null;
     this.running = true;
     this.status = 'attaching RTT…';
     try {
-      await this.session.createRttClient({ elf: this.elf ?? this.defmtElf ?? undefined, defaults: { dataFormat: this.defmtElf ? 'Defmt' : 'String' } });
-      if (this.defmtElf) {
+      const elf = this.elf ?? this.defmtElf ?? undefined;
+      // An ELF without `_SEGGER_RTT` (e.g. semihosting-only firmware) gets no RTT
+      // client: otherwise the server rescans all of RAM on every poll.
+      const useRtt = !elf || elfHasRtt(elf);
+      if (useRtt) await this.session.createRttClient({ elf, defaults: { dataFormat: this.defmtElf ? 'Defmt' : 'String' } });
+      else {
+        this.session.clearRttClient();
+        this.term?.writeln('\x1b[90m[ELF has no RTT control block; monitoring semihosting only]\x1b[0m');
+      }
+      if (useRtt && this.defmtElf) {
         const ok = this.session.setDefmtElf(this.defmtElf);
         if (!ok) this.term?.writeln('\x1b[33m[ELF has no defmt table; showing raw bytes]\x1b[0m');
       }
       const exit = await this.session.monitor(this.bootInfo ?? 'attach', (e) => this.onEvent(e));
       this.status = `stopped: ${typeof exit === 'string' ? exit : JSON.stringify(exit)}`;
+      this.dispatchEvent(new CustomEvent('monitor-exit', { detail: exit, bubbles: true, composed: true }));
+      return exit;
     } catch (e) {
       this.status = `error: ${(e as Error).message ?? e}`;
+      return null;
     } finally {
       this.running = false;
     }
@@ -83,6 +95,7 @@ export class ProbeRttTerminal extends LitElement {
 
   /** Called for every monitor event; overridable for tests/automation. */
   onEvent(e: MonitorEvent) {
+    this.dispatchEvent(new CustomEvent('monitor-event', { detail: e, bubbles: true, composed: true }));
     const t = this.term;
     if (!t) return;
     switch (e.kind) {

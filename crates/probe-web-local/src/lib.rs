@@ -8,6 +8,8 @@
 //! (see spikes/README.md, "capability negotiation").
 
 mod convert;
+mod info;
+mod semihosting;
 mod server;
 
 use postcard_rpc::server::{Dispatch, Server, WireRxErrorKind};
@@ -27,6 +29,13 @@ fn tracing_subscriber_for_wasm() -> impl tracing::Subscriber + Send + Sync {
     ))
 }
 
+/// Tell the page this worker is dead (`"fatal:<reason>"`).
+fn post_fatal(reason: &str) {
+    if let Ok(scope) = js_sys::global().dyn_into::<web_sys::DedicatedWorkerGlobalScope>() {
+        let _ = scope.post_message(&JsValue::from_str(&format!("fatal:{reason}")));
+    }
+}
+
 pub(crate) fn log(s: &str) {
     web_sys::console::log_1(&format!("[probe-web-local] {s}").into());
 }
@@ -35,7 +44,12 @@ pub(crate) fn log(s: &str) {
 /// `Uint8Array`); replies and topic messages go out via `postMessage`.
 #[wasm_bindgen]
 pub fn start() -> js_sys::Function {
-    console_error_panic_hook::set_once();
+    // Log the panic as before, and tell the page: a wasm panic leaves this instance
+    // unusable, so the client must fail pending calls instead of waiting forever.
+    std::panic::set_hook(Box::new(|info| {
+        console_error_panic_hook::hook(info);
+        post_fatal(&info.to_string());
+    }));
     // probe-rs's own tracing goes to the worker console (and from there to the
     // page via local-worker.js). WARN by default; raise to INFO to see the vendor sequences' steps.
     let _ = tracing::subscriber::set_global_default(
@@ -61,6 +75,7 @@ pub fn start() -> js_sys::Function {
     wasm_bindgen_futures::spawn_local(async move {
         let _ = rpc_server.run().await;
         log("server stopped");
+        post_fatal("the RPC server stopped");
     });
 
     let scope: web_sys::DedicatedWorkerGlobalScope = js_sys::global().unchecked_into();
