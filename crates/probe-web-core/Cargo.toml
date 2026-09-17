@@ -11,8 +11,10 @@ description = "Browser client for probe-rs: the probe-rs RPC client compiled to 
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-probe-rs-rpc = { path = "../../../prs-wasm-rpc/probe-rs-rpc" }
-probe-rs-rpc-client = { path = "../../../prs-wasm-rpc/probe-rs-rpc-client" }
+# probe-rs's RPC schema and client, from the fork branch that makes them build for wasm32
+# (upstream PR pending; see README). For local work against a checkout, see .cargo/config.toml.example.
+probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
+probe-rs-rpc-client = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 postcard-rpc = { version = "0.12", features = ["use-std"] }
 defmt-decoder = "1"
 object = { version = "0.40", default-features = false, features = ["read_core", "elf", "std"] }

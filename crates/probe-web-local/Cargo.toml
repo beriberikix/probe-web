@@ -18,10 +18,10 @@ fake = []
 [dependencies]
 anyhow = "1"
 # The async fork with the nusb 0.2.7 WebUSB port. Replaced by crates.io probe-rs once the async port lands upstream.
-probe-rs = { path = "../../../probe-rs/probe-rs", default-features = false, features = ["builtin-targets"] }
-probe-rs-rpc = { path = "../../../prs-wasm-rpc/probe-rs-rpc" }
+probe-rs = { git = "https://github.com/beriberikix/probe-rs", branch = "webusb/nusb-0.2.7", default-features = false, features = ["builtin-targets"] }
+probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 # The fork's async DWARF layer (stack traces, variables, breakpoints, stepping) for debugging in the worker.
-probe-rs-debug = { path = "../../../probe-rs/probe-rs-debug" }
+probe-rs-debug = { git = "https://github.com/beriberikix/probe-rs", branch = "webusb/nusb-0.2.7" }
 # Same version as the fork's probe-rs-debug (source paths in breakpoint requests).
 typed-path = "0.11"
 # Same version as probe-rs serve (CMSIS-SVD peripherals in the Peripherals scope).
