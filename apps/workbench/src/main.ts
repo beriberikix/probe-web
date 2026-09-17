@@ -175,7 +175,37 @@ $('pick-probe').onclick = async () => {
 // ------------------------------------------------------------------ sources, program, SVD
 
 // In development the sources are reachable through Vite's /@fs/ route (inside server.fs.allow).
-let sources: SourceProvider = new UrlSourceProvider({ base: qs.get('srcBase') ?? '/@fs/', prefix: qs.get('srcPrefix') ?? '/' });
+/** Tries each provider in turn, so a shipped demo and a dev checkout can both resolve. */
+function firstOf(...providers: SourceProvider[]): SourceProvider {
+  return {
+    async resolve(path) {
+      for (const p of providers) {
+        const hit = await p.resolve(path);
+        if (hit !== null) return hit;
+      }
+      return null;
+    },
+    async read(path) {
+      for (const p of providers) {
+        const text = await p.read(path);
+        if (text !== null) return text;
+      }
+      return null;
+    },
+  };
+}
+
+// The demo firmware is built with its paths remapped to /probe-web-firmware/ and its sources
+// shipped next to the images (scripts/build-firmware.sh), so the deployed workbench shows code
+// without the visitor having a checkout. Otherwise: Vite's /@fs/ route in development, or the
+// folder picked with Sources….
+let sources: SourceProvider = firstOf(
+  new UrlSourceProvider({
+    base: new URL('firmware/src/', document.baseURI).href,
+    prefix: '/probe-web-firmware/',
+  }),
+  new UrlSourceProvider({ base: qs.get('srcBase') ?? '/@fs/', prefix: qs.get('srcPrefix') ?? '/' }),
+);
 source.sources = sources;
 // Picked files and the source folder are remembered in IndexedDB (File System Access handles) and
 // offered again after a reload: silently if the browser still grants read access, otherwise

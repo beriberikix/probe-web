@@ -9,30 +9,69 @@
 # ELFs are gitignored; this is what CI runs before building the site.
 set -e
 cd "$(dirname "$0")/.."
-out=$(pwd)/apps/flash/public/firmware
-mkdir -p "$out"
+root=$(pwd)
+out=$root/apps/flash/public/firmware
+mkdir -p "$out" "$out/src"
+
+# Build one firmware crate with its paths remapped:
+#   - its own sources to /probe-web-firmware/<crate>, where the workbench looks for the sources
+#     shipped alongside the images;
+#   - the registry and the sysroot, whose paths would otherwise carry the build machine's home
+#     directory into a published binary.
+#
+# RUSTFLAGS *replaces* a crate's configured rustflags rather than adding to them, and those carry
+# the linker scripts (-Tlink.x, -Tdefmt.x) — so read them out of the crate's own config and pass
+# them along. Without that the image links against a default layout and comes out empty.
+build_firmware() {  # <crate> [extra cargo args…]
+  crate=$1
+  shift
+  configured=$(cd "hardware-tests/firmware/$crate" && python3 - <<'PY'
+import pathlib, shlex, tomllib
+config = pathlib.Path('.cargo/config.toml')
+data = tomllib.loads(config.read_text()) if config.exists() else {}
+target = data.get('build', {}).get('target')
+# A target name contains dots, so TOML nests it: [target.thumbv8m.main-none-eabi] is
+# target -> thumbv8m -> main-none-eabi.
+node = data.get('target', {})
+for part in (target or '').split('.'):
+    node = node.get(part, {}) if isinstance(node, dict) else {}
+print(shlex.join(node.get('rustflags', [])))
+PY
+)
+  RUSTFLAGS="$configured \
+    --remap-path-prefix=$root/hardware-tests/firmware/$crate=/probe-web-firmware/$crate \
+    --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo \
+    --remap-path-prefix=$(rustc --print sysroot)=/rust" \
+    sh -c "cd '$root/hardware-tests/firmware/$crate' && cargo build --release $*"
+}
 
 # Cortex-M33 (FRDM-MCXA153 and Thingy:91/nRF9160): one crate, one memory layout per feature,
 # built into separate target directories so the layouts do not overwrite each other.
 rustup target add thumbv8m.main-none-eabi
 for board in mcxa153 nrf9160; do
-  (cd hardware-tests/firmware/cm33-debug &&
-    CARGO_TARGET_DIR="target/$board" cargo build --release --features "$board")
+  build_firmware cm33-debug --features "$board" --target-dir "target/$board"
   cp "hardware-tests/firmware/cm33-debug/target/$board/thumbv8m.main-none-eabi/release/cm33-debug" \
     "$out/$board-debug.elf"
 done
 
 # The RTT, semihosting and UART-echo images the other demo manifests point at.
 for fw in mcxa153-rtt nrf9160-rtt-echo nrf9160-semihosting nrf9160-uart-echo; do
-  (cd "hardware-tests/firmware/$fw" && cargo build --release)
+  build_firmware "$fw"
   cp "hardware-tests/firmware/$fw/target/thumbv8m.main-none-eabi/release/$fw" "$out/$fw.elf"
 done
 
 # Xtensa needs the esp toolchain (espup), so it is opt-in.
 if [ "$1" = "--esp32s3" ]; then
-  (cd hardware-tests/firmware/esp32s3-debug && cargo build --release)
+  build_firmware esp32s3-debug
   cp hardware-tests/firmware/esp32s3-debug/target/xtensa-esp32s3-none-elf/release/esp32s3-debug \
     "$out/esp32s3-debug.elf"
 fi
+
+# The sources those remapped DWARF paths name, so the deployed workbench can show code.
+for crate in cm33-debug esp32s3-debug mcxa153-rtt nrf9160-rtt-echo nrf9160-semihosting nrf9160-uart-echo; do
+  [ -d "hardware-tests/firmware/$crate/src" ] || continue
+  mkdir -p "$out/src/$crate"
+  cp -R "hardware-tests/firmware/$crate/src" "$out/src/$crate/"
+done
 
 ls -la "$out"
