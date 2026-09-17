@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./wire": "./src/wire.ts",
-    "./testing": "./src/testing/fake-debugger.ts"
+    "./testing": "./src/testing/fake-debugger.ts",
+    "./testing/worker": "./src/testing/fake-worker.ts"
   },
   "files": [
     "src",

@@ -16,6 +16,14 @@ const logEl = $('log');
 const log = (m: string) => { logEl.textContent += m + '\n'; logEl.scrollTop = logEl.scrollHeight; console.log('[flasher] ' + m); };
 const qs = new URLSearchParams(location.search);
 
+/** The fake-probe worker. Dev-only: the `import.meta.env.DEV` guard is what keeps its 12 MB
+ * wasm module out of production bundles, since a bundler emits any chunk it can reach. */
+async function fakeWorker(): Promise<Worker> {
+  if (!import.meta.env.DEV) throw new Error('the fake probe is only available in development');
+  const { createFakeLocalWorker } = await import('@probe-web/client/testing/worker');
+  return createFakeLocalWorker();
+}
+
 let client: Client | null = null;
 let session: Session | null = null;
 let probe: Wire.DebugProbeEntry | null = null;
@@ -71,7 +79,7 @@ async function connect(): Promise<Client | null> {
     client = kind === 'websocket'
       ? await Client.connect({ kind, url: $<HTMLInputElement>('ws-url').value, token: $<HTMLInputElement>('ws-token').value })
       : await (async () => {
-          const worker = createLocalWorker({ fake: qs.has('fake') });
+          const worker = qs.has('fake') ? await fakeWorker() : createLocalWorker();
           worker.addEventListener('message', (e) => { if (typeof e.data === 'string' && e.data.startsWith('log:')) log('[worker] ' + e.data.slice(4)); });
           return Client.connect({ kind, worker });
         })();
@@ -158,7 +166,7 @@ await loadManifest();
 if (qs.has('crashtest')) {
   void (async () => {
     const t0 = performance.now();
-    const c = await Client.connect({ kind: 'webusb', fake: true });
+    const c = await Client.connect({ kind: 'webusb', worker: await fakeWorker() });
     const probeEntry: Wire.DebugProbeEntry = { identifier: 'crash', vendor_id: 0xffff, product_id: 0xfffe, interface: null, serial_number: '', probe_type: 'fake', inaccessible: false };
     const kindOf = (e: unknown) => (e as { kind?: string }).kind ?? 'none';
     let first = 'resolved';

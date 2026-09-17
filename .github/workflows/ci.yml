@@ -16,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The toolchain and the wasm32 target come from rust-toolchain.toml.
       # rustup installs the channel and the wasm32 target named in rust-toolchain.toml.
       - run: rustup show
       - uses: Swatinem/rust-cache@v2

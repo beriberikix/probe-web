@@ -46,28 +46,36 @@ export function ensureWasm(): Promise<unknown> {
 
 export type Transport =
   | { kind: 'websocket'; url: string; token?: string }
-  | { kind: 'webusb'; worker?: Worker; /** test-only build with a fake probe (mocked core) */ fake?: boolean };
+  | {
+      kind: 'webusb';
+      /** Defaults to a worker running probe-rs; tests pass the fake-probe worker from
+       * `@probe-web/client/testing`. */
+      worker?: Worker;
+    };
 
 /**
  * Create the worker that hosts probe-rs for the WebUSB transport. `log` raises
  * probe-rs's tracing level inside the worker (its output is mirrored to the page
  * as `log:` messages); in a browser it also comes from `?workerLog=` on the page.
  */
-export function createLocalWorker(opts: { fake?: boolean; log?: string } = {}): Worker {
-  // Both `new Worker(new URL(…, import.meta.url))` calls are written out in full: a bundler
-  // only recognises a worker, and so only emits its chunk, when the URL is a literal.
-  const worker = opts.fake
-    ? new Worker(new URL('../worker/fake/local-worker.js', import.meta.url), { type: 'module' })
-    : new Worker(new URL('../worker/local-worker.js', import.meta.url), { type: 'module' });
-  const level =
-    opts.log ??
+export function createLocalWorker(opts: { log?: string } = {}): Worker {
+  // The URL is written out in full: a bundler only recognises a worker, and so only emits its
+  // chunk, when the URL is a literal. The fake-probe worker lives in `@probe-web/client/testing`
+  // for the same reason — referencing it here would put a second 12 MB wasm module into every
+  // deployed page.
+  const worker = new Worker(new URL('../worker/local-worker.js', import.meta.url), { type: 'module' });
+  worker.postMessage(`init:${workerLogLevel(opts.log) ?? ''}`);
+  return worker;
+}
+
+/** The worker's probe-rs tracing level: explicit, else `?workerLog=` on the page. */
+export function workerLogLevel(explicit?: string): string | undefined {
+  return (
+    explicit ??
     (typeof location !== 'undefined'
       ? (new URLSearchParams(location.search).get('workerLog') ?? undefined)
-      : undefined);
-  // The worker waits for this before starting probe-rs, so the level is set before its
-  // tracing subscriber is installed.
-  worker.postMessage(`init:${level ?? ''}`);
-  return worker;
+      : undefined)
+  );
 }
 
 export interface ProbeWebError extends Error {
@@ -256,7 +264,7 @@ export class Client {
       const raw = await ProbeWebClient.connectWebSocket(transport.url, transport.token ?? '');
       return new Client(raw, 'websocket');
     }
-    const worker = transport.worker ?? createLocalWorker({ fake: transport.fake });
+    const worker = transport.worker ?? createLocalWorker();
     // Listen before connecting, so a crash during start-up is attributed too. This
     // listener runs before the transport's own handler closes the channel.
     const crash: CrashState = { reason: null };
@@ -344,8 +352,8 @@ export interface OpenSessionOptions {
   /** WebSocket URL of `probe-rs serve` (default `ws://127.0.0.1:3000`). */
   url?: string;
   token?: string;
-  /** Test-only fake probe in the WebUSB worker. */
-  fake?: boolean;
+  /** A worker to host probe-rs in, instead of the default one (tests pass the fake-probe worker). */
+  worker?: Worker;
   /** Case-insensitive substring of the probe's name or serial number; the first probe when omitted. */
   probe?: string;
   chip?: string;
@@ -360,7 +368,7 @@ export interface OpenSessionOptions {
 export async function openSession(opts: OpenSessionOptions): Promise<{ client: Client; session: Session; probe: Wire.DebugProbeEntry }> {
   const client = await Client.connect(
     opts.transport === 'webusb'
-      ? { kind: 'webusb', fake: opts.fake }
+      ? { kind: 'webusb', worker: opts.worker }
       : { kind: 'websocket', url: opts.url ?? 'ws://127.0.0.1:3000', token: opts.token ?? '' },
   );
   try {

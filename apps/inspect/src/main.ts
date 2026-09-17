@@ -10,12 +10,20 @@ let client: Client | null = null;
 let probe: Wire.DebugProbeEntry | null = null;
 const picker = $<ProbeDevicePicker>('picker');
 
+/** The fake-probe worker. Dev-only: the `import.meta.env.DEV` guard keeps its 12 MB wasm
+ * module out of production bundles. */
+async function fakeWorker(): Promise<Worker> {
+  if (!import.meta.env.DEV) throw new Error('the fake probe is only available in development');
+  const { createFakeLocalWorker } = await import('@probe-web/client/testing/worker');
+  return createFakeLocalWorker();
+}
+
 async function connect(): Promise<Client | null> {
   const kind = (document.querySelector('input[name=transport]:checked') as HTMLInputElement).value as 'webusb' | 'websocket';
   try {
     client = kind === 'websocket'
       ? await Client.connect({ kind, url: $<HTMLInputElement>('ws-url').value, token: $<HTMLInputElement>('ws-token').value })
-      : await Client.connect({ kind, worker: createLocalWorker({ fake: qs.has('fake') }) });
+      : await Client.connect({ kind, worker: qs.has('fake') ? await fakeWorker() : createLocalWorker() });
     picker.client = client;
     const ok = client.supports('info');
     $('conn-status').textContent = `connected (${kind})${ok ? '' : '; this server has no info endpoint'}`;

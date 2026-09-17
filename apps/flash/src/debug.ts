@@ -4,6 +4,7 @@
 //                               real target over WebSocket to probe-rs serve: flash, break at src/main.rs:<line>
 import '@probe-web/ui';
 import { Client, openSession, type Debugger } from '@probe-web/client';
+import { createFakeLocalWorker } from '@probe-web/client/testing/worker';
 import { FakeDebugger } from '@probe-web/client/testing';
 import type { Frame } from '@probe-web/client';
 import type { ProbeBreakpoints, ProbeCallstack, ProbeCoreControls, ProbeDisassembly, ProbeMemoryView, ProbePeripherals, ProbeRegisters, ProbeVariables } from '@probe-web/ui';
@@ -48,7 +49,7 @@ if (qs.get('webusb-fake') === 'core') {
       try { const v = await fn(); check(name, ok(v), v); } catch (e) { check(name, false, `threw: ${(e as Error).message ?? e}`); }
     };
     try {
-      const client = await Client.connect({ kind: 'webusb', fake: true });
+      const client = await Client.connect({ kind: 'webusb', worker: createFakeLocalWorker() });
       const probe = (await client.listProbes()).find((p) => p.serial_number === 'fake')!;
       const session = await client.attach({ probe, chip: 'MCXA153' });
       for (const path of ['cores/halt', 'cores/resume', 'cores/status', 'core/step', 'core/write_reg', 'core/set_hw_bps', 'core/clear_hw_bps', 'core/enable_vc', 'core/metadata', 'core/read_registers', 'debug_state/load_debug_info', 'stack_trace/rich', 'stack_trace/scopes', 'stack_trace/variables', 'stack_trace/evaluate', 'stack_trace/set_variable', 'debug_state/clear_core', 'debug_state/resolve_source_breakpoints', 'debug_state/resolve_source_locations', 'debug_state/load_svd', 'core/dump'] as const) {
@@ -76,7 +77,7 @@ if (qs.get('webusb-fake') === 'core') {
 } else if (qs.has('webusb-fake')) {
   // The WebUSB worker (fake probe) serves the debug endpoints: debugger() is available there too.
   void (async () => {
-    const client = await Client.connect({ kind: 'webusb', fake: true });
+    const client = await Client.connect({ kind: 'webusb', worker: createFakeLocalWorker() });
     const probe = (await client.listProbes()).find((p) => p.serial_number === 'fake')!;
     const session = await client.attach({ probe, chip: 'MCXA153' });
     try {

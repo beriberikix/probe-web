@@ -361,6 +361,14 @@ async function showTopFrame() {
   }
 }
 
+/** The fake-probe worker. Dev-only: the `import.meta.env.DEV` guard is what keeps its 12 MB
+ * wasm module out of production bundles, since a bundler emits any chunk it can reach. */
+async function fakeWorker(): Promise<Worker> {
+  if (!import.meta.env.DEV) throw new Error('the fake probe is only available in development');
+  const { createFakeLocalWorker } = await import('@probe-web/client/testing/worker');
+  return createFakeLocalWorker();
+}
+
 async function connectReal(kind: 'launch' | 'attach') {
   const transport = $<HTMLSelectElement>('transport').value === 'webusb' ? 'webusb' : 'websocket';
   const opened = await openSession({
@@ -370,7 +378,7 @@ async function connectReal(kind: 'launch' | 'attach') {
     probe: $<HTMLInputElement>('probe').value,
     chip: $<HTMLInputElement>('chip').value || undefined,
     protocol: $<HTMLInputElement>('protocol').value as 'Swd' | 'Jtag',
-    fake: qs.has('fakeProbe'),
+    worker: qs.has('fakeProbe') ? await fakeWorker() : undefined,
   });
   ({ client, session } = opened);
   log(`attached ${$<HTMLInputElement>('chip').value} via ${transport}: ${opened.probe.identifier}`, 'gray');
