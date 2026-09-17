@@ -389,3 +389,19 @@ Known gaps, both in the fork's `probe-rs-debug` and Xtensa-only:
 Hardening fixed during this phase: a probe left mid-command by a page that went away used to stay unusable until something opened it natively (CMSIS-DAP: read timeouts and replies one behind; ESP-USB-JTAG: `JtagScanChain(InvalidIdCode)`). `probe/attach` in the worker now reopens the probe and retries once, and CMSIS-DAP additionally resynchronises replies and health-checks the probe when opening. Hardware breakpoints are cleared on attach, so an aborted debug session no longer breaks the next flash.
 
 Not done, by decision: `core/disassemble` in the worker (capstone is C) - the UI and DAP report disassembly as unavailable instead.
+
+## Going public (2026-09-17)
+
+Decisions: keep the name `probe-web` (both `probe-web` and the `@probe-web` scope are free on npm), ship source plus a hosted demo, deploy to GitHub Pages, and do not publish to npm yet.
+
+Done, committed on `main`:
+- **Builds from a clean clone.** The crates pointed at `../probe-rs` and `../prs-wasm-rpc` by relative path, so nobody else could build them; they now fetch the fork branches over git, with Cargo.lock pinning the commits. `.cargo/config.toml` documents a `paths` override for working against local checkouts (and still carries the required `--cfg=web_sys_unstable_apis`). Proved by cloning the pushed repo into a temp directory and running `scripts/build-wasm.sh` and `scripts/build-site.sh`.
+- **The fork builds standalone too** (`beriberikix/probe-rs@webusb/nusb-0.2.7`): `hidapi` was a required dependency on a checkout that happened to sit next to the repository. It is now optional behind a `cmsisdap_v1` feature as upstream has it, pointing at the public branch it is written against, and the workspace no longer forces probe-rs's default features on probe-rs-debug — which had been pulling a C library into wasm builds through feature unification.
+- LICENSE-MIT and LICENSE-APACHE; a README that says what works and what does not; `scripts/build-site.sh`, which builds all four apps into one static site (they must share an origin, because WebUSB grants are per origin); CI (wasm build, generated-types check, typecheck, vitest, Playwright, rustfmt, wasm clippy) and a Pages deploy workflow.
+- Two real defects found by building the site rather than serving it from Vite: the **Worker was never bundled** (a bundler only recognises `new Worker(new URL(…))` when the URL is a literal, so a deployed page had no probe-rs at all), and the **test-only fake worker shipped to production** (eight worker copies, 124 MB). The worker log level now travels over an init message instead of a query string, and the fake worker moved to `@probe-web/client/testing/worker`.
+- Verified the *built* site against hardware: served it on the granted origin and ran the workbench over WebUSB on an nRF9160 — breakpoint, call stack, variables and memory pass. The source view needs the Sources… picker there, since `/@fs/` is a Vite dev-server route.
+
+Open:
+- The repository is still private and GitHub Pages is not enabled, so the deploy workflow cannot publish yet. Making it public is the user's call.
+- The site is 100 MB because each app is its own Vite build and so carries its own copy of the 12.6 MB worker. A single multi-entry build would share it; what a browser downloads is unaffected.
+- The three upstream PR branches (`../prs-up-{xtensa,serve,runloop}`) are still unpushed, waiting on the repository being public.
