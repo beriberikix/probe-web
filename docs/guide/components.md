@@ -93,7 +93,6 @@ panel that follows a debugger's `stopped`, `continued` and `breakpoints` events.
 ## Events
 
 Events bubble and cross shadow roots (`composed`), so you can listen on a container.
-`device-authorized` is the exception: listen on the picker itself.
 
 The [API reference](/api/ui/) lists every element's properties, methods and events.
 
