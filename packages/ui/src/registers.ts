@@ -102,7 +102,7 @@ export class ProbeRegisters extends LitElement {
   }
 
   render() {
-    if (!this.debugger) return html`<div class="muted">no debugger</div>`;
+    if (!this.debugger) return html`<div class="muted empty">no debugger</div>`;
     const groups = new Map<Group, RegisterValue[]>();
     for (const v of this.values) {
       const g = groupOf(v);
@@ -111,7 +111,7 @@ export class ProbeRegisters extends LitElement {
     const halted = this.debugger.state === 'halted';
     return html`
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
-      ${this.values.length === 0 ? html`<div class="muted">halt the core to read registers</div>` : nothing}
+      ${this.values.length === 0 ? html`<div class="muted empty">halt the core to read registers</div>` : nothing}
       <table class=${this.stale ? 'stale' : ''}>
         ${[...groups.entries()].map(([g, list]) => html`
           <tr class="clickable" @click=${() => this.toggle(g)}><th colspan="2">${this.collapsed.has(g) ? '▸' : '▾'} ${g} <span class="muted">(${list.length})</span></th></tr>

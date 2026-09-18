@@ -1,4 +1,6 @@
+import '../../shared/shell.ts';
 import '@probe-web/ui';
+import './layout.ts';
 import { describe, onDevicesChanged } from '@probe-web/devices';
 import { Client, Session, createLocalWorker, type FlashJob, type Wire } from '@probe-web/client';
 import { downloadBytes } from '@probe-web/artifacts';
@@ -235,7 +237,7 @@ if (qs.has('serialtest')) {
   void (async () => {
     for (let i = 0; i < 20 && !serialMonitor.port; i++) await new Promise((r) => setTimeout(r, 100));
     if (!serialMonitor.port) {
-      log('serialtest: no granted serial port (click "Choose port…" in section 6 once)');
+      log('serialtest: no granted serial port (click "Choose port…" in the Serial tab once)');
       log('SERIAL_RESULT=FAIL');
       return;
     }

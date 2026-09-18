@@ -2,6 +2,8 @@ import { css, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { DebuggerElement } from './debugger-element.ts';
 import { SampleDecoder, type SampleFormat } from './samples.ts';
+import { baseStyles } from './base-style.ts';
+import { cssVar, onSchemeChange } from './color-scheme.ts';
 
 /**
  * `<probe-rtt-plot>`: plot the numbers coming out of a binary RTT channel.
@@ -24,16 +26,18 @@ import { SampleDecoder, type SampleFormat } from './samples.ts';
 @customElement('probe-rtt-plot')
 export class ProbeRttPlot extends DebuggerElement {
   /** @internal */
-  static styles = css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
-    select, input { font: inherit; padding: 3px 5px; }
+  static styles = [baseStyles, css`
+    .row { margin: 0 0 6px; }
     input[type=number] { width: 6em; }
-    button { font: inherit; padding: 4px 8px; }
-    canvas { width: 100%; height: 160px; display: block; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
-    .muted { color: #666; }
-    .stat { font-family: ui-monospace, monospace; font-size: 11px; color: #444; }
-  `;
+    canvas {
+      width: 100%; height: 160px; display: block; box-sizing: border-box;
+      border: 1px solid var(--_divider); border-radius: var(--_radius); background: var(--_bg);
+      --plot-line: var(--_brand-2); --plot-text: var(--_text-2);
+    }
+    .stat { font-family: var(--_mono); font-size: 11px; color: var(--_text-2); }
+    .muted { font-size: 12px; margin-top: 6px; }
+  `];
+
 
   /** Which up channel to plot. */
   @property({ type: Number }) channel = 1;
@@ -52,14 +56,19 @@ export class ProbeRttPlot extends DebuggerElement {
   #decoder = new SampleDecoder('u32');
   #onBytes = (e: Event) => this.#take(e as CustomEvent<{ channel: number; bytes: Uint8Array }>);
 
+  #unfollow: (() => void) | null = null;
+
   connectedCallback() {
     super.connectedCallback();
     this.#decoder.format = this.format;
     this.debugger?.addEventListener('rtt-bytes', this.#onBytes);
+    this.#unfollow = onSchemeChange(() => this.draw());
   }
 
   disconnectedCallback() {
     this.debugger?.removeEventListener('rtt-bytes', this.#onBytes);
+    this.#unfollow?.();
+    this.#unfollow = null;
     super.disconnectedCallback();
   }
 
@@ -152,7 +161,7 @@ export class ProbeRttPlot extends DebuggerElement {
     const x = (i: number) => (i / (samples.length - 1)) * (width - 2 * pad) + pad;
     const y = (v: number) => height - pad - ((v - min) / (max - min)) * (height - 2 * pad);
 
-    ctx.strokeStyle = '#1d4ed8';
+    ctx.strokeStyle = cssVar(canvas, '--plot-line', '#3a5ccc');
     ctx.lineWidth = Math.max(1, ratio);
     ctx.beginPath();
     ctx.moveTo(x(0), y(samples[0]));
@@ -160,8 +169,8 @@ export class ProbeRttPlot extends DebuggerElement {
     ctx.stroke();
 
     // The range, so the trace means something without axes.
-    ctx.fillStyle = '#666';
-    ctx.font = `${11 * ratio}px ui-monospace, monospace`;
+    ctx.fillStyle = cssVar(canvas, '--plot-text', '#67676c');
+    ctx.font = `${11 * ratio}px ui-monospace, Menlo, monospace`;
     ctx.fillText(String(max), pad, 12 * ratio);
     ctx.fillText(String(min), pad, height - 3 * ratio);
   }

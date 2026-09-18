@@ -39,13 +39,21 @@ const DEFAULT_OPEN = new Set(['Variables']);
 export class ProbeVariables extends LitElement {
   /** @internal */
   static styles = [debugStyles, css`
-    .node { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; white-space: nowrap; }
-    .twisty { width: 1em; display: inline-block; cursor: pointer; user-select: none; color: #555; }
-    .name { color: #7c3aed; }
-    .scope > .name { color: #111; font-weight: 600; }
+    .node { display: flex; gap: 6px; align-items: center; min-height: 22px; padding: 0 4px; border-radius: 4px; white-space: nowrap; }
+    .node:hover { background: var(--_default-soft); }
+    .twisty { width: 1em; flex: none; display: inline-block; text-align: center; cursor: pointer; user-select: none; color: var(--_text-3); font-size: 10px; }
+    .twisty:hover { color: var(--_text-1); }
+    .name { color: var(--_purple-1); font-family: var(--_mono); font-size: 12px; }
+    .scope { margin-top: 4px; }
+    .scope > .name {
+      color: var(--_text-2); font-family: inherit; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
     .value { overflow: hidden; text-overflow: ellipsis; }
-    .type { color: #888; font-size: 11px; }
-    .watch-add { font: inherit; width: 14em; }
+    .type { color: var(--_text-3); font-size: 11px; }
+    .node button { min-height: 18px; width: 18px; padding: 0; font-size: 11px; background: transparent; color: var(--_text-3); }
+    .node button:hover:not(:disabled) { background: var(--_default-soft); color: var(--_red-1); }
+    .watch-add { width: 16em; min-height: 22px; }
   `];
 
   /** The debugger whose variables are shown. */
@@ -199,11 +207,11 @@ export class ProbeVariables extends LitElement {
   }
 
   render() {
-    if (!this.debugger) return html`<div class="muted">no debugger</div>`;
+    if (!this.debugger) return html`<div class="muted empty">no debugger</div>`;
     return html`
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
       <div class=${this.stale ? 'stale' : ''}>
-        ${this.scopes.length === 0 ? html`<div class="muted">halt the core to see variables</div>` : nothing}
+        ${this.scopes.length === 0 ? html`<div class="muted empty">halt the core to see variables</div>` : nothing}
         ${this.scopes.map((s) => this.renderNode(s))}
         <div class="node scope"><span class="twisty"></span><span class="name">Watch</span></div>
         ${this.watches.map((w) => html`

@@ -2,6 +2,8 @@ import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Client, Wire } from '@probe-web/client';
 import { describe, grantedDevices, hasWebUsb, onDevicesChanged, requestProbe } from '@probe-web/devices';
+import { baseStyles } from './base-style.ts';
+import { icon } from './icons.ts';
 
 /**
  * `<probe-device-picker>`: lists the probes the connected `Client` can see
@@ -30,16 +32,27 @@ import { describe, grantedDevices, hasWebUsb, onDevicesChanged, requestProbe } f
 @customElement('probe-device-picker')
 export class ProbeDevicePicker extends LitElement {
   /** @internal */
-  static styles = css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    ul { list-style: none; padding: 0; margin: 8px 0; }
-    li { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
-    li.selected { border-color: #2563eb; background: #eff6ff; }
-    .id { color: #666; font-family: ui-monospace, monospace; font-size: 12px; }
-    button { font: inherit; padding: 6px 10px; }
-    .empty { color: #666; }
-    .warn { color: #b45309; }
-  `;
+  static styles = [baseStyles, css`
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+    li {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 0 10px; align-items: center;
+      padding: 6px 10px; border: 1px solid var(--_divider); border-radius: var(--_radius-lg);
+      background: var(--_bg); cursor: pointer; transition: border-color 0.15s, background-color 0.15s;
+    }
+    li:hover { border-color: var(--_border); }
+    li.selected { border-color: var(--_brand-2); background: var(--_brand-soft); }
+    li > svg { grid-row: span 2; color: var(--_text-2); }
+    li.selected > svg { color: var(--_brand-1); }
+    .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .id { grid-column: 2; color: var(--_text-2); font-family: var(--_mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+    .check { grid-row: span 2; color: var(--_brand-1); visibility: hidden; }
+    li.selected .check { visibility: visible; }
+    li .warn { grid-column: 2; font-size: 12px; }
+    .empty { color: var(--_text-2); margin: 8px 0 0; padding: 10px 12px; border: 1px dashed var(--_divider); border-radius: var(--_radius-lg); }
+    p.warn { margin: 8px 0 0; }
+  `];
+
 
   /** The connection whose probes are listed; `null` shows "Not connected." */
   @property({ attribute: false }) client: Client | null = null;
@@ -99,16 +112,19 @@ export class ProbeDevicePicker extends LitElement {
   render() {
     const local = this.client?.transport === 'webusb';
     return html`
-      <div>
-        ${local && hasWebUsb() ? html`<button @click=${this.authorize}>Authorize device…</button>` : nothing}
-        <button @click=${this.refresh}>Refresh</button>
+      <div class="actions">
+        ${local && hasWebUsb() ? html`<button class="primary" @click=${this.authorize}>${icon('plus', 14)}Authorize device…</button>` : nothing}
+        <button @click=${this.refresh}>${icon('refresh', 14)}Refresh</button>
         ${local && !hasWebUsb() ? html`<span class="warn">WebUSB is not available in this browser; use the WebSocket transport.</span>` : nothing}
       </div>
       ${this.probes.length === 0
         ? html`<p class="empty">${this.client ? (local ? `No probes (${this.granted} granted device${this.granted === 1 ? '' : 's'}). Authorize one, or check the probe's firmware supports CMSIS-DAP v2.` : 'No probes on the server.') : 'Not connected.'}</p>`
         : html`<ul>${this.probes.map((p) => html`
-            <li class=${key(p) === this.selected ? 'selected' : ''} @click=${() => this.select(p)}>
-              <span>${p.identifier}</span>
+            <li class=${key(p) === this.selected ? 'selected' : ''} tabindex="0" @click=${() => this.select(p)}
+                @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.select(p); } }}>
+              ${icon('plug', 18)}
+              <span class="name">${p.identifier}</span>
+              <span class="check">${icon('check', 16)}</span>
               <span class="id">${hex(p.vendor_id)}:${hex(p.product_id)}${p.serial_number ? ':' + p.serial_number : ''}</span>
               ${p.inaccessible ? html`<span class="warn">no access</span>` : nothing}
             </li>`)}</ul>`}

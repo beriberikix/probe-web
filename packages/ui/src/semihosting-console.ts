@@ -1,6 +1,8 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { MonitorEvent, Wire } from '@probe-web/client';
+import { baseStyles } from './base-style.ts';
+import { icon } from './icons.ts';
 
 /**
  * `<probe-semihosting-console>`: shows the target's semihosting stdout and
@@ -15,12 +17,22 @@ import type { MonitorEvent, Wire } from '@probe-web/client';
 @customElement('probe-semihosting-console')
 export class ProbeSemihostingConsole extends LitElement {
   /** @internal */
-  static styles = css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    pre { background: #111; color: #eee; padding: 8px; border-radius: 6px; min-height: 4em; max-height: 240px; overflow: auto; font-size: 12px; margin: 4px 0; white-space: pre-wrap; }
-    .err { color: #f87171; } .status { color: #666; } .exit-ok { color: #15803d; } .exit-bad { color: #b91c1c; }
-    button { font: inherit; padding: 4px 8px; }
-  `;
+  static styles = [baseStyles, css`
+    :host { display: flex; flex-direction: column; }
+    .head { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
+    .spacer { flex: 1; }
+    pre {
+      flex: 1 1 auto; box-sizing: border-box; min-height: 4em; max-height: var(--pw-console-max-height, 240px);
+      margin: 0; padding: 6px 10px; overflow: auto; white-space: pre-wrap;
+      font: 12px/1.45 var(--_mono); color: var(--_text-1); background: var(--_bg);
+      border: 1px solid var(--_divider); border-radius: var(--_radius);
+    }
+    .err { color: var(--_red-1); } .status { color: var(--_text-2); font-size: 12px; }
+    .exit-ok, .exit-bad { margin-top: 6px; padding: 4px 10px; border-radius: var(--_radius); font-weight: 500; }
+    .exit-ok { color: var(--_green-1); background: var(--_green-soft); }
+    .exit-bad { color: var(--_red-1); background: var(--_red-soft); }
+  `];
+
 
   /** An element (usually a `<probe-rtt-terminal>`) whose `monitor-event` / `monitor-exit` events are shown. */
   @property({ attribute: false }) source: EventTarget | null = null;
@@ -63,7 +75,11 @@ export class ProbeSemihostingConsole extends LitElement {
 
   render() {
     return html`
-      <div class="status">semihosting ${this.lines.length ? `(${this.lines.length} chunk${this.lines.length === 1 ? '' : 's'})` : '(no output yet)'} <button @click=${this.clear}>Clear</button></div>
+      <div class="head">
+        <span class="status">semihosting ${this.lines.length ? `(${this.lines.length} chunk${this.lines.length === 1 ? '' : 's'})` : '(no output yet)'}</span>
+        <span class="spacer"></span>
+        <button class="ghost" title="Clear the output" @click=${this.clear}>${icon('trash', 13)}Clear</button>
+      </div>
       <pre>${this.lines.map((l) => html`<span class=${l.stream === 'stderr' ? 'err' : ''}>${l.text}</span>`)}</pre>
       ${this.exit ? html`<div class=${this.exit.includes('success') ? 'exit-ok' : 'exit-bad'}>${this.exit}</div>` : nothing}
     `;

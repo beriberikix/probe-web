@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["vite/client", "w3c-web-usb"]
   },
-  "include": ["src"]
+  "include": ["src", "../shared"]
 }

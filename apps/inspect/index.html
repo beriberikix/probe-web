@@ -3,39 +3,120 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>probe-web inspect</title>
+  <title>Inspector · probe-web</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>
+    // The docs' light/dark setting (VitePress's own check), applied before first paint.
+    ;(() => {
+      let p = 'auto'
+      try { p = localStorage.getItem('vitepress-theme-appearance') || 'auto' } catch {}
+      if (p === 'auto' ? matchMedia('(prefers-color-scheme: dark)').matches : p === 'dark')
+        document.documentElement.classList.add('dark')
+    })()
+  </script>
   <style>
-    body { font: 14px system-ui, sans-serif; margin: 0; padding: 16px; max-width: 960px; margin-inline: auto; color: #111; }
-    h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 18px 0 6px; }
-    .muted { color: #666; } .err { color: #b91c1c; }
-    fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 10px 0; }
-    label { margin-right: 10px; } input[type=text] { font: inherit; } button { font: inherit; padding: 6px 10px; }
-    pre { background: #f5f5f5; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
-    details { margin: 4px 0 4px 12px; } summary { cursor: pointer; font-family: ui-monospace, monospace; font-size: 12px; }
-    .kv { font-family: ui-monospace, monospace; font-size: 12px; margin-left: 24px; }
+    /* Reserved before the stylesheet arrives, so nothing shifts or flashes. */
+    html { background: #fff; } html.dark { background: #1b1b1f; }
+    body { margin: 0; }
+    .app-bar { height: 44px; box-sizing: border-box; }
+    .ws-only { display: none !important; }
+    .workspace:has(input[name=transport][value=websocket]:checked) .ws-only { display: grid !important; }
+    #results:empty::before {
+      content: 'Connect, pick a probe and scan to see what is behind it.';
+      display: block; padding: 24px 0; text-align: center; color: var(--pw-c-text-2);
+    }
+    #results details { margin: 0 0 0 14px; }
+    #results > details { margin-left: 0; }
+    #results summary {
+      display: flex; align-items: center; gap: 4px; min-height: 22px; padding: 0 4px; border-radius: 4px;
+      list-style: none; cursor: pointer; font: 12px var(--pw-font-family-mono); color: var(--pw-c-brand-1);
+    }
+    #results summary::-webkit-details-marker { display: none; }
+    #results summary::before { content: '▸'; width: 12px; font-size: 10px; color: var(--pw-c-text-3); transition: transform 0.1s; }
+    #results details[open] > summary::before { transform: rotate(90deg); }
+    #results summary:hover, #results .kv:hover { background: var(--pw-c-default-soft); }
+    #results .kv { min-height: 22px; line-height: 22px; padding: 0 4px 0 20px; border-radius: 4px; font: 12px/22px var(--pw-font-family-mono); }
+    #results > .muted { padding: 4px 4px; }
   </style>
 </head>
 <body>
-  <h1>probe-web inspect</h1>
-  <p class="muted">What is behind a probe, with no chip definition: debug port, access ports, ROM tables, JTAG IDCODEs (`probe-rs info` in a page).</p>
-  <fieldset>
-    <legend>transport</legend>
-    <label><input type="radio" name="transport" value="webusb" checked> WebUSB</label>
-    <label><input type="radio" name="transport" value="websocket"> WebSocket</label>
-    <label>url <input type="text" id="ws-url" value="ws://127.0.0.1:3000" size="24"></label>
-    <label>token <input type="text" id="ws-token" size="10"></label>
-    <button id="connect">Connect</button>
-    <span id="conn-status" class="muted"></span>
-  </fieldset>
-  <h2>Probe</h2>
-  <probe-device-picker id="picker"></probe-device-picker>
-  <h2>Scan</h2>
-  <label>protocol <select id="protocol"><option>Swd</option><option>Jtag</option></select></label>
-  <label><input type="checkbox" id="cur"> connect under reset</label>
-  <button id="scan">Scan</button>
-  <span id="scan-status" class="muted"></span>
-  <div id="results"></div>
-  <pre id="log"></pre>
+  <header class="app-bar" data-app="inspect"></header>
+
+  <div class="workspace">
+    <aside class="sidebar" id="sidebar" aria-label="Setup">
+      <details class="view" id="view-connection" open>
+        <summary><span class="step">1</span>Connection<span class="badge"></span></summary>
+        <div class="view-body">
+          <div class="segmented" role="radiogroup" aria-label="transport">
+            <label><input type="radio" name="transport" value="webusb" checked> WebUSB <small>probe-rs in this tab</small></label>
+            <label><input type="radio" name="transport" value="websocket"> WebSocket <small>probe-rs serve</small></label>
+          </div>
+          <div class="fields ws-only">
+            <label class="field"><span>url</span><input type="text" id="ws-url" value="ws://127.0.0.1:3000" size="24"></label>
+            <label class="field"><span>token</span><input type="text" id="ws-token" size="10"></label>
+          </div>
+          <div class="actions">
+            <button id="connect" class="primary">Connect</button>
+            <span id="conn-status" class="status-text"></span>
+          </div>
+        </div>
+      </details>
+
+      <details class="view" id="view-probe" open>
+        <summary><span class="step">2</span>Probe<span class="badge"></span></summary>
+        <div class="view-body">
+          <probe-device-picker id="picker"></probe-device-picker>
+        </div>
+      </details>
+
+      <details class="view" id="view-scan" open>
+        <summary><span class="step">3</span>Scan<span class="badge"></span></summary>
+        <div class="view-body">
+          <div class="fields">
+            <label class="field"><span>protocol</span><select id="protocol"><option>Swd</option><option>Jtag</option></select></label>
+          </div>
+          <label class="check"><input type="checkbox" id="cur"> connect under reset</label>
+          <div class="actions">
+            <button id="scan" class="primary">Scan</button>
+            <span id="scan-status" class="status-text"></span>
+          </div>
+        </div>
+      </details>
+    </aside>
+    <div class="sash" id="sidebar-sash" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
+
+    <main class="main">
+      <div class="scroll">
+        <div class="content">
+          <section class="card" aria-labelledby="results-title">
+            <div class="card-header">
+              <h2 id="results-title">Debug topology</h2>
+              <span class="spacer"></span>
+              <span class="muted">debug port, access ports, ROM tables and JTAG IDCODEs, with no chip definition (<code>probe-rs info</code> in a page)</span>
+            </div>
+            <div class="card-body">
+              <div id="results"></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="sash horizontal" id="panel-sash" role="separator" aria-orientation="horizontal" aria-label="Resize output panel"></div>
+      <section class="output-panel" id="panel" aria-label="Output" style="--panel-height: 30%">
+        <div role="tablist" id="panel-tabs" aria-label="Output">
+          <button role="tab" id="tab-log" aria-controls="panel-log">Log</button>
+        </div>
+        <div role="tabpanel" id="panel-log" aria-labelledby="tab-log"><pre class="log" id="log"></pre></div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="status-bar">
+    <span class="item dot" id="sb-connection">not connected</span>
+    <span class="item" id="sb-probe"></span>
+    <span class="spacer"></span>
+    <span class="item" id="sb-scan"></span>
+  </footer>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>

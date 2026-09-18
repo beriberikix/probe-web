@@ -8,6 +8,7 @@
 //   ?check=webusb-src|webusb|webusb-semi|plot&probe=…&chip=…&elf=…
 //                               hardware checks through the WebUSB worker; see below and
 //                               hardware-tests/README.md
+import '../../shared/shell.ts';
 import '@probe-web/ui';
 import { SampleDecoder } from '@probe-web/ui';
 import { Client, openSession, type Debugger } from '@probe-web/client';

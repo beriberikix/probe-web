@@ -1,0 +1,197 @@
+/*
+ * probe-web theme: design tokens and base element styles.
+ *
+ * The values are VitePress's default theme, so the apps and the docs read as one product.
+ * Dark mode follows VitePress's convention: add the `dark` class to <html>. The components
+ * read these tokens with light fallbacks, so they render without this file too.
+ */
+
+:root {
+  --pw-c-bg: #ffffff;
+  --pw-c-bg-alt: #f6f6f7;
+  --pw-c-bg-soft: #f6f6f7;
+  --pw-c-bg-elv: #ffffff;
+
+  --pw-c-text-1: #3c3c43;
+  --pw-c-text-2: #67676c;
+  --pw-c-text-3: #929295;
+
+  --pw-c-border: #c2c2c4;
+  --pw-c-divider: #e2e2e3;
+
+  --pw-c-default-1: #dddde3;
+  --pw-c-default-2: #e4e4e9;
+  --pw-c-default-3: #ebebef;
+  --pw-c-default-soft: rgba(142, 150, 170, 0.14);
+
+  --pw-c-brand-1: #3451b2;
+  --pw-c-brand-2: #3a5ccc;
+  --pw-c-brand-3: #5672cd;
+  --pw-c-brand-soft: rgba(100, 108, 255, 0.14);
+
+  --pw-c-purple-1: #6f42c1;
+  --pw-c-purple-soft: rgba(159, 122, 234, 0.14);
+
+  --pw-c-green-1: #18794e;
+  --pw-c-green-2: #299764;
+  --pw-c-green-3: #30a46c;
+  --pw-c-green-soft: rgba(16, 185, 129, 0.14);
+
+  --pw-c-yellow-1: #915930;
+  --pw-c-yellow-2: #946300;
+  --pw-c-yellow-3: #9f6a00;
+  --pw-c-yellow-soft: rgba(234, 179, 8, 0.14);
+
+  --pw-c-red-1: #b8272c;
+  --pw-c-red-2: #d5393e;
+  --pw-c-red-3: #e0575b;
+  --pw-c-red-soft: rgba(244, 63, 94, 0.14);
+
+  --pw-c-white: #ffffff;
+
+  --pw-font-family-base: 'Inter', 'Inter Variable', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --pw-font-family-mono: ui-monospace, 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono',
+    'Courier New', monospace;
+
+  --pw-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --pw-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.07);
+  --pw-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.08);
+
+  --pw-radius: 6px;
+  --pw-radius-lg: 8px;
+  --pw-control-height: 26px;
+
+  color-scheme: light;
+}
+
+:root.dark {
+  --pw-c-bg: #1b1b1f;
+  --pw-c-bg-alt: #161618;
+  --pw-c-bg-soft: #202127;
+  --pw-c-bg-elv: #202127;
+
+  --pw-c-text-1: #dfdfd6;
+  --pw-c-text-2: #98989f;
+  --pw-c-text-3: #6a6a71;
+
+  --pw-c-border: #3c3f44;
+  --pw-c-divider: #2e2e32;
+
+  --pw-c-default-1: #515c67;
+  --pw-c-default-2: #414853;
+  --pw-c-default-3: #32363f;
+  --pw-c-default-soft: rgba(101, 117, 133, 0.16);
+
+  --pw-c-brand-1: #a8b1ff;
+  --pw-c-brand-2: #5c73e7;
+  --pw-c-brand-3: #3e63dd;
+  --pw-c-brand-soft: rgba(100, 108, 255, 0.16);
+
+  --pw-c-purple-1: #c8abfa;
+  --pw-c-purple-soft: rgba(159, 122, 234, 0.16);
+
+  --pw-c-green-1: #3dd68c;
+  --pw-c-green-2: #30a46c;
+  --pw-c-green-3: #298459;
+  --pw-c-green-soft: rgba(16, 185, 129, 0.16);
+
+  --pw-c-yellow-1: #f9b44e;
+  --pw-c-yellow-2: #da8b17;
+  --pw-c-yellow-3: #a46a0a;
+  --pw-c-yellow-soft: rgba(234, 179, 8, 0.16);
+
+  --pw-c-red-1: #f66f81;
+  --pw-c-red-2: #f14158;
+  --pw-c-red-3: #b62a3c;
+  --pw-c-red-soft: rgba(244, 63, 94, 0.16);
+
+  --pw-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --pw-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --pw-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+
+  color-scheme: dark;
+}
+
+/* ---- Base elements ---------------------------------------------------- */
+
+body {
+  margin: 0;
+  background: var(--pw-c-bg);
+  color: var(--pw-c-text-1);
+  font: 13px/1.5 var(--pw-font-family-base);
+  font-synthesis: style;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--pw-c-brand-soft); }
+
+a { color: var(--pw-c-brand-1); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+code, kbd, pre, samp { font-family: var(--pw-font-family-mono); }
+code {
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--pw-c-default-soft);
+  color: var(--pw-c-text-1);
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--pw-control-height);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--pw-radius);
+  background: var(--pw-c-default-3);
+  color: var(--pw-c-text-1);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+button:hover:not(:disabled) { background: var(--pw-c-default-2); }
+button:active:not(:disabled) { background: var(--pw-c-default-1); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--pw-c-brand-3); color: var(--pw-c-white); }
+button.primary:hover:not(:disabled) { background: var(--pw-c-brand-2); }
+button.primary:active:not(:disabled) { background: var(--pw-c-brand-1); }
+button.danger { background: var(--pw-c-red-soft); color: var(--pw-c-red-1); }
+button.danger:hover:not(:disabled) { background: var(--pw-c-red-3); color: var(--pw-c-white); }
+button.ghost, button.icon { background: transparent; }
+button.ghost:hover:not(:disabled), button.icon:hover:not(:disabled) { background: var(--pw-c-default-soft); }
+button.icon { width: var(--pw-control-height); padding: 0; color: var(--pw-c-text-2); }
+button.icon:hover:not(:disabled) { color: var(--pw-c-text-1); }
+button svg, a svg { flex: none; }
+
+input[type='text'], input[type='number'], input[type='search'], input:not([type]), select, textarea {
+  box-sizing: border-box;
+  min-height: var(--pw-control-height);
+  padding: 0 8px;
+  border: 1px solid var(--pw-c-divider);
+  border-radius: var(--pw-radius);
+  background: var(--pw-c-bg);
+  transition: border-color 0.15s;
+}
+textarea { padding: 4px 8px; }
+select { padding-right: 4px; }
+input:hover, select:hover, textarea:hover { border-color: var(--pw-c-border); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--pw-c-brand-2); }
+input::placeholder { color: var(--pw-c-text-3); }
+input[type='checkbox'], input[type='radio'], progress { accent-color: var(--pw-c-brand-3); }
+
+:focus-visible { outline: 2px solid var(--pw-c-brand-2); outline-offset: 1px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+.muted { color: var(--pw-c-text-2); }
+.err { color: var(--pw-c-red-1); }
+.ok { color: var(--pw-c-green-1); }
+.mono { font-family: var(--pw-font-family-mono); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--pw-c-default-1) transparent; }

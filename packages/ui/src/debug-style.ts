@@ -1,23 +1,26 @@
 import { css } from 'lit';
+import { baseStyles } from './base-style.ts';
 
-/** Shared look for the debugger components. */
-export const debugStyles = css`
-  :host { display: block; font: 13px system-ui, sans-serif; color: #111; }
-  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
-  button { font: inherit; padding: 4px 9px; }
-  .muted { color: #666; }
-  .err { color: #b91c1c; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-  table { border-collapse: collapse; width: 100%; }
-  td, th { padding: 2px 6px; text-align: left; vertical-align: top; }
-  th { font-weight: 600; color: #444; border-bottom: 1px solid #ddd; }
-  tr.selected { background: #dbeafe; }
-  tr.clickable { cursor: pointer; }
-  tr.clickable:hover { background: #f1f5f9; }
-  .changed { color: #b45309; font-weight: 600; }
-  .stale { opacity: 0.5; }
-  input.edit { font: inherit; font-family: ui-monospace, monospace; font-size: 12px; width: 12em; }
-`;
+/** Shared look for the debugger components: dense tables and trees, like VS Code's views. */
+export const debugStyles = [
+  baseStyles,
+  css`
+    table { border-collapse: collapse; width: 100%; }
+    td, th { padding: 2px 8px; text-align: left; vertical-align: top; line-height: 18px; }
+    th {
+      position: sticky; top: 0; z-index: 1; background: var(--_bg);
+      font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--_text-2); border-bottom: 1px solid var(--_divider);
+    }
+    tbody tr:hover, tr.clickable:hover { background: var(--_default-soft); }
+    tr.selected, tr.selected:hover { background: var(--_brand-soft); box-shadow: inset 2px 0 var(--_brand-3); }
+    tr.clickable { cursor: pointer; }
+    .changed { color: var(--_yellow-2); font-weight: 600; }
+    .stale { opacity: 0.5; }
+    input.edit { font-family: var(--_mono); font-size: 12px; width: 12em; }
+    .empty, .unavailable { color: var(--_text-2); padding: 12px 4px; }
+  `,
+];
 
 /** The message of a thrown value, for showing in a panel. */
 export const errorText = (e: unknown) => (e as Error)?.message ?? String(e);

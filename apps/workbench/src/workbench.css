@@ -1,0 +1,60 @@
+/* The workbench: toolbar, dock and editor, on the shared theme tokens. */
+
+#dock { flex: 1; min-height: 0; }
+
+/* dockview, recoloured from the theme so it follows light and dark. The light theme's
+   class stays on the dock for its structural settings (35px tabs, no gaps). */
+#dock.dockview-theme-light, #dock .dockview-theme-light {
+  color-scheme: inherit;
+  --dv-group-view-background-color: var(--pw-c-bg);
+  --dv-tabs-and-actions-container-background-color: var(--pw-c-bg-alt);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--pw-c-bg);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--pw-c-bg);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-tab-divider-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--pw-c-text-1);
+  --dv-activegroup-hiddenpanel-tab-color: var(--pw-c-text-2);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--pw-c-text-1);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--pw-c-text-3);
+  --dv-separator-border: var(--pw-c-divider);
+  --dv-paneview-header-border-color: var(--pw-c-divider);
+  --dv-scrollbar-background-color: var(--pw-c-default-1);
+  --dv-icon-hover-background-color: var(--pw-c-default-soft);
+  --dv-drag-over-background-color: var(--pw-c-brand-soft);
+  --dv-active-sash-color: var(--pw-c-brand-2);
+  --dv-paneview-active-outline-color: var(--pw-c-brand-2);
+  --dv-floating-box-shadow: var(--pw-shadow-3);
+  --dv-floating-border: 1px solid var(--pw-c-divider);
+  --dv-tabs-and-actions-container-font-size: 12px;
+}
+#dock .dv-tabs-and-actions-container { border-bottom: 1px solid var(--pw-c-divider); }
+#dock .dv-tab { font-weight: 500; padding: 0 12px; }
+#dock .dv-tab.dv-active-tab { box-shadow: inset 0 -2px var(--pw-c-default-1); }
+#dock .dv-groupview.dv-active-group .dv-tab.dv-active-tab { box-shadow: inset 0 -2px var(--pw-c-brand-2); }
+#dock .dv-default-tab-action { color: var(--pw-c-text-2); }
+
+/* A panel wrapping a component. fitRunPanel counts its 12px of vertical padding. */
+.panel { height: 100%; overflow: auto; padding: 6px 10px; box-sizing: border-box; background: var(--pw-c-bg); }
+
+.source-panel { height: 100%; display: flex; flex-direction: column; background: var(--pw-c-bg); }
+.source-header {
+  font: 12px var(--pw-font-family-mono);
+  color: var(--pw-c-text-2);
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--pw-c-divider);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-editor { flex: 1; min-height: 0; }
+.console-panel { height: 100%; background: var(--pw-c-bg); padding: 4px 0 4px 10px; box-sizing: border-box; }
+
+/* Monaco renders in the light DOM, so its decorations are global. */
+.bp-verified { background: radial-gradient(circle, var(--pw-c-red-2) 45%, transparent 50%); }
+.bp-unverified { background: radial-gradient(circle, transparent 35%, var(--pw-c-red-2) 40%, var(--pw-c-red-2) 48%, transparent 52%); }
+.pc-line { background: var(--pw-c-yellow-soft); box-shadow: inset 2px 0 var(--pw-c-yellow-2); }
+.pc-arrow::before { content: '➤'; color: var(--pw-c-yellow-2); font-size: 12px; margin-left: 2px; }
+
+/* While a session is live the status bar takes the brand tint, as VS Code's does. */
+body.debugging .status-bar { background: var(--pw-c-brand-soft); color: var(--pw-c-text-1); }

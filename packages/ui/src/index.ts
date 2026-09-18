@@ -19,3 +19,7 @@ export * from './samples.ts';
 export * from './rtt-plot.ts';
 // The base class of the debugger panels, for building your own.
 export { DebuggerElement } from './debugger-element';
+// Theming: the icon set, the page's colour scheme, and the matching xterm theme.
+export * from './icons.ts';
+export * from './color-scheme.ts';
+export * from './terminal-theme.ts';

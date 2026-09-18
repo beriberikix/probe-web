@@ -1,4 +1,4 @@
-import { html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import type { Breakpoint } from '@probe-web/client';
 import { DebuggerElement } from './debugger-element.ts';
@@ -17,7 +17,13 @@ const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
 @customElement('probe-breakpoints')
 export class ProbeBreakpoints extends DebuggerElement {
   /** @internal */
-  static styles = debugStyles;
+  static styles = [debugStyles, css`
+    td:first-child { width: 14px; padding-right: 0; color: var(--_red-2); }
+    td:last-child { width: 1px; }
+    .actions { opacity: 0; min-height: 20px; width: 20px; padding: 0; background: transparent; color: var(--_text-3); }
+    tr:hover .actions, .actions:focus-visible { opacity: 1; }
+    .actions:hover:not(:disabled) { background: var(--_default-soft); color: var(--_red-1); }
+  `];
 
   @state() private list: Breakpoint[] = [];
   @state() private hit: number[] = [];
@@ -87,7 +93,7 @@ export class ProbeBreakpoints extends DebuggerElement {
   }
 
   render() {
-    if (!this.debugger) return html`<div class="muted">no debugger</div>`;
+    if (!this.debugger) return html`<div class="muted empty">no debugger</div>`;
     return html`
       <div class="row">
         <input class="edit" style="width:16em" placeholder="src/main.rs:40 or 0x938" @keydown=${(e: KeyboardEvent) => {
@@ -96,7 +102,7 @@ export class ProbeBreakpoints extends DebuggerElement {
         <button ?disabled=${!this.list.length} @click=${() => this.removeAll()}>Remove all</button>
       </div>
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
-      ${this.list.length === 0 ? html`<div class="muted">no breakpoints</div>` : nothing}
+      ${this.list.length === 0 ? html`<div class="muted empty">no breakpoints</div>` : nothing}
       <table>
         ${this.list.map((b) => {
           const where = b.kind === 'source'
@@ -106,7 +112,7 @@ export class ProbeBreakpoints extends DebuggerElement {
             <td title=${b.verified ? 'set on the target' : b.message ?? ''}>${b.verified ? '●' : html`<span class="err">○</span>`}</td>
             <td class="where">${where}${b.verified ? nothing : html`<div class="err message">${b.message}</div>`}</td>
             <td class="mono muted">${b.kind === 'source' && b.address !== null ? hex(b.address) : ''}</td>
-            <td><button title="remove" @click=${() => this.removeBreakpoint(b)}>✕</button></td>
+            <td><button class="actions" title="remove" @click=${() => this.removeBreakpoint(b)}>✕</button></td>
           </tr>`;
         })}
       </table>

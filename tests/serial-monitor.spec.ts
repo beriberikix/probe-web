@@ -41,6 +41,8 @@ test('serial monitor picks a port, receives lines, sends with CRLF, disconnects'
     });
   });
   await page.goto('/?idle=1');
+  // The monitor lives in the output panel's Serial tab.
+  await page.getByRole('tab', { name: 'Serial' }).click();
   const mon = page.locator('probe-serial-monitor');
   await mon.getByRole('combobox', { name: 'baud rate' }).selectOption('921600');
   await mon.getByRole('button', { name: 'Choose port…' }).click();

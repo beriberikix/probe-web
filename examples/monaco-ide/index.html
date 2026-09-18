@@ -3,27 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>probe-web Monaco IDE example</title>
+  <title>Monaco IDE example · probe-web</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>
+    // Follow the docs' light/dark setting (VitePress keeps it in localStorage).
+    ;(() => {
+      let p = 'auto'
+      try { p = localStorage.getItem('vitepress-theme-appearance') || 'auto' } catch {}
+      if (p === 'auto' ? matchMedia('(prefers-color-scheme: dark)').matches : p === 'dark')
+        document.documentElement.classList.add('dark')
+    })()
+  </script>
   <style>
+    /* Colours and type come from @probe-web/ui/theme.css, imported by main.ts. */
     html, body { height: 100%; margin: 0; }
-    body { display: grid; grid-template-rows: auto 1fr 35%; font: 13px system-ui, sans-serif; }
-    header { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid #ddd; }
-    header input { font: inherit; width: 9em; } header button { font: inherit; }
+    html { background: #fff; } html.dark { background: #1b1b1f; }
+    body { display: grid; grid-template-rows: auto 1fr 35%; }
+    header { display: flex; gap: 6px 10px; align-items: center; flex-wrap: wrap; padding: 6px 12px; border-bottom: 1px solid var(--pw-c-divider); background: var(--pw-c-bg-alt); }
+    header .title { font-weight: 600; margin-right: 4px; }
+    header .title a { font-weight: 400; margin-left: 6px; font-size: 12px; }
+    header .group { display: flex; gap: 6px; align-items: center; }
+    header .sep { width: 1px; height: 20px; background: var(--pw-c-divider); }
+    header input { width: 9em; }
     #editor { min-height: 0; }
-    #term { background: #0b0f14; padding: 4px; min-height: 0; }
-    .bp { background: radial-gradient(circle, #dc2626 45%, transparent 50%); }
-    .pc { background: rgba(250, 204, 21, 0.3); }
+    #term { background: var(--pw-c-bg); padding: 4px 0 4px 10px; min-height: 0; border-top: 1px solid var(--pw-c-divider); }
+    .bp { background: radial-gradient(circle, var(--pw-c-red-2) 45%, transparent 50%); }
+    .pc { background: var(--pw-c-yellow-soft); }
   </style>
 </head>
 <body>
   <header>
-    <b>Monaco IDE (DAP only)</b>
-    <input id="url" value="ws://127.0.0.1:3000"> <input id="token" placeholder="token"> <input id="probe" placeholder="probe"> <input id="chip" placeholder="chip">
-    <input id="elf" value="/firmware/mcxa153-debug.elf" title="ELF URL">
-    <button id="launch">Launch</button>
-    <button data-cmd="continue">Continue</button><button data-cmd="pause">Pause</button>
-    <button data-cmd="next">Step over</button><button data-cmd="stepIn">Step in</button><button data-cmd="stepOut">Step out</button>
-    <button id="stop">Stop</button>
+    <span class="title">Monaco IDE (DAP only)<a href="../">probe-web docs</a></span>
+    <span class="group">
+      <input id="url" value="ws://127.0.0.1:3000" title="probe-rs serve URL"> <input id="token" placeholder="token"> <input id="probe" placeholder="probe"> <input id="chip" placeholder="chip">
+      <input id="elf" value="/firmware/mcxa153-debug.elf" title="ELF URL">
+    </span>
+    <span class="sep"></span>
+    <span class="group">
+      <button id="launch" class="primary">Launch</button>
+      <button data-cmd="continue">Continue</button><button data-cmd="pause">Pause</button>
+      <button data-cmd="next">Step over</button><button data-cmd="stepIn">Step in</button><button data-cmd="stepOut">Step out</button>
+      <button id="stop" class="danger">Stop</button>
+    </span>
   </header>
   <div id="editor"></div>
   <div id="term"></div>

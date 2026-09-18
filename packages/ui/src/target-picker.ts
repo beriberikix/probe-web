@@ -1,6 +1,8 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Client, Wire } from '@probe-web/client';
+import { baseStyles } from './base-style.ts';
+import { icon } from './icons.ts';
 
 /** A chip family read out of a pack, waiting for the user to choose whether to load it. */
 interface PendingFamily {
@@ -31,20 +33,32 @@ interface PendingFamily {
 @customElement('probe-target-picker')
 export class ProbeTargetPicker extends LitElement {
   /** @internal */
-  static styles = css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-    input[type=text] { font: inherit; padding: 5px 8px; width: 16em; }
-    button { font: inherit; padding: 5px 9px; }
-    ul { list-style: none; margin: 4px 0; padding: 0; max-height: 180px; overflow: auto; border: 1px solid #ddd; border-radius: 6px; }
-    li { padding: 4px 8px; cursor: pointer; display: flex; justify-content: space-between; }
-    li:hover { background: #f3f4f6; } li.selected { background: #eff6ff; }
-    .fam { color: #666; font-size: 12px; }
-    table { border-collapse: collapse; font-size: 12px; margin-top: 6px; }
-    td, th { padding: 2px 8px; text-align: left; border-bottom: 1px solid #eee; }
-    .mono { font-family: ui-monospace, monospace; }
-    .muted { color: #666; } .err { color: #b91c1c; } .ok { color: #15803d; }
-  `;
+  static styles = [baseStyles, css`
+    .row { gap: 8px; margin: 0 0 6px; }
+    .search { position: relative; display: flex; flex: 1 1 14em; }
+    .search svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--_text-3); pointer-events: none; }
+    .search input { width: 100%; padding-left: 28px; }
+    .meta { font-size: 12px; color: var(--_text-2); gap: 4px 10px; }
+    .import { position: relative; cursor: pointer; color: var(--_brand-1); font-weight: 500; }
+    .import:hover { text-decoration: underline; text-underline-offset: 2px; }
+    .import input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+    .import:has(input:disabled) { color: var(--_text-3); cursor: default; text-decoration: none; }
+    ul {
+      list-style: none; margin: 6px 0; padding: 2px; max-height: 200px; overflow: auto;
+      border: 1px solid var(--_divider); border-radius: var(--_radius-lg); background: var(--_bg);
+    }
+    li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+    li:hover { background: var(--_default-soft); }
+    li.selected { background: var(--_brand-soft); color: var(--_brand-1); font-weight: 500; }
+    li.muted { cursor: default; background: none; }
+    .fam { color: var(--_text-2); font-size: 12px; font-weight: 400; }
+    .info { margin-top: 8px; font-size: 12px; }
+    table { border-collapse: collapse; font-size: 12px; margin-top: 4px; width: 100%; }
+    td, th { padding: 2px 8px 2px 0; text-align: left; border-bottom: 1px solid var(--_divider); }
+    th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--_text-2); }
+    .ok, .err { font-size: 12px; margin: 4px 0; }
+  `];
+
 
   /** The connection whose chip registry is searched and extended. */
   @property({ attribute: false }) client: Client | null = null;
@@ -184,10 +198,13 @@ export class ProbeTargetPicker extends LitElement {
     const m = this.results;
     return html`
       <div class="row">
-        <input type="text" placeholder="search chips (e.g. nRF52, MCXA153)" .value=${this.query} @input=${(e: Event) => (this.query = (e.target as HTMLInputElement).value)}>
-        <span class="muted">${this.families.length} families</span>
-        <label>import <input type="file" accept=".yaml,.yml,.pack,.flm,.FLM" @change=${this.importFile} ?disabled=${!this.client}></label>
-        <span class="muted">target YAML, CMSIS .pack or .FLM</span>
+        <span class="search">${icon('search', 14)}<input type="text" placeholder="search chips (e.g. nRF52, MCXA153)" .value=${this.query} @input=${(e: Event) => (this.query = (e.target as HTMLInputElement).value)}></span>
+      </div>
+      <div class="row meta">
+        <span>${this.families.length} families</span>
+        <span aria-hidden="true">·</span>
+        <label class="import" title="Add chips from a target YAML, a CMSIS .pack or an .FLM">import <input type="file" accept=".yaml,.yml,.pack,.flm,.FLM" @change=${this.importFile} ?disabled=${!this.client}></label>
+        <span>target YAML, CMSIS .pack or .FLM</span>
       </div>
       ${this.status ? html`<div class="ok">${this.status}</div>` : nothing}
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
@@ -204,7 +221,7 @@ export class ProbeTargetPicker extends LitElement {
         </ul>` : nothing}
       ${this.query ? html`<ul>${m.map((r) => html`<li class=${r.chip === this.value ? 'selected' : ''} @click=${() => this.select(r.chip)}><span>${r.chip}</span><span class="fam">${r.family}</span></li>`)}${m.length === 0 ? html`<li class="muted">no match</li>` : nothing}</ul>` : nothing}
       ${this.info ? html`
-        <div class="muted">${this.value}: ${this.info.cores.map((c) => `${c.name} (${c.core_type})`).join(', ')}</div>
+        <div class="muted info">${this.value}: ${this.info.cores.map((c) => `${c.name} (${c.core_type})`).join(', ')}</div>
         <table><tr><th>region</th><th>kind</th><th>range</th></tr>
           ${this.info.memory_map.map((r) => { const [kind, x] = Object.entries(r)[0] as [string, Wire.RamRegion]; return html`<tr><td>${x.name ?? ''}</td><td>${kind}</td><td class="mono">0x${x.range[0].toString(16)}…0x${x.range[1].toString(16)}</td></tr>`; })}
         </table>` : nothing}

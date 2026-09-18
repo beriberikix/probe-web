@@ -4,8 +4,45 @@ import 'monaco-editor/languages/definitions/rust/register';
 import 'monaco-editor/languages/definitions/cpp/register';
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
 import type { SourceProvider } from '@probe-web/client';
+import { currentScheme, onSchemeChange, type ColorScheme } from '@probe-web/ui/color-scheme';
 
 (self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = { getWorker: () => new EditorWorker() };
+
+// Editor themes on the page's colours (VitePress's), for light and dark.
+monaco.editor.defineTheme('probe-light', {
+  base: 'vs', inherit: true, rules: [],
+  colors: {
+    'editor.background': '#ffffff',
+    'editorGutter.background': '#ffffff',
+    'editor.lineHighlightBackground': '#f6f6f7',
+    'editor.lineHighlightBorder': '#00000000',
+    'editorLineNumber.foreground': '#929295',
+    'editorLineNumber.activeForeground': '#3c3c43',
+    'editor.selectionBackground': '#646cff33',
+    'editor.inactiveSelectionBackground': '#646cff1f',
+    'editorWidget.background': '#f6f6f7',
+    'editorWidget.border': '#e2e2e3',
+    'scrollbarSlider.background': '#8e96aa33',
+  },
+});
+monaco.editor.defineTheme('probe-dark', {
+  base: 'vs-dark', inherit: true, rules: [],
+  colors: {
+    'editor.background': '#1b1b1f',
+    'editorGutter.background': '#1b1b1f',
+    'editor.lineHighlightBackground': '#202127',
+    'editor.lineHighlightBorder': '#00000000',
+    'editorLineNumber.foreground': '#6a6a71',
+    'editorLineNumber.activeForeground': '#dfdfd6',
+    'editor.selectionBackground': '#646cff40',
+    'editor.inactiveSelectionBackground': '#646cff26',
+    'editorWidget.background': '#202127',
+    'editorWidget.border': '#2e2e32',
+    'scrollbarSlider.background': '#65758533',
+  },
+});
+const editorTheme = (scheme: ColorScheme) => (scheme === 'dark' ? 'probe-dark' : 'probe-light');
+onSchemeChange((scheme) => monaco.editor.setTheme(editorTheme(scheme)));
 
 const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
 const language = (path: string) => (/\.rs$/.test(path) ? 'rust' : /\.(c|h|cc|cpp|hpp)$/.test(path) ? 'cpp' : 'plaintext');
@@ -52,6 +89,8 @@ export class SourceView {
       automaticLayout: true,
       minimap: { enabled: false },
       fontSize: 13,
+      fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+      theme: editorTheme(currentScheme()),
       scrollBeyondLastLine: false,
       model: null,
     });

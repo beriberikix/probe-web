@@ -3,60 +3,117 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>probe-web flasher</title>
+  <title>Flasher · probe-web</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>
+    // The docs' light/dark setting (VitePress's own check), applied before first paint.
+    ;(() => {
+      let p = 'auto'
+      try { p = localStorage.getItem('vitepress-theme-appearance') || 'auto' } catch {}
+      if (p === 'auto' ? matchMedia('(prefers-color-scheme: dark)').matches : p === 'dark')
+        document.documentElement.classList.add('dark')
+    })()
+  </script>
   <style>
-    body { font: 14px system-ui, sans-serif; margin: 0; padding: 16px; max-width: 900px; margin-inline: auto; color: #111; }
-    h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 18px 0 6px; }
-    .muted { color: #666; }
-    fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 10px 0; }
-    label { margin-right: 10px; } input[type=text] { font: inherit; }
-    button { font: inherit; padding: 6px 10px; }
-    .err { color: #b91c1c; } .ok { color: #15803d; }
-    pre.log { background: #f5f5f5; padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; font-size: 12px; }
+    /* Reserved before the stylesheet arrives, so nothing shifts or flashes. */
+    html { background: #fff; } html.dark { background: #1b1b1f; }
+    body { margin: 0; }
+    .app-bar { height: 44px; box-sizing: border-box; }
+    .ws-only { display: none !important; }
+    .workspace:has(input[name=transport][value=websocket]:checked) .ws-only { display: grid !important; }
   </style>
 </head>
 <body>
-  <h1>probe-web flasher</h1>
-  <p class="muted">
-    <label>Demo firmware
-      <select id="demo" title="Images built and shipped with this site">
-        <option value="">loading…</option>
-      </select>
-    </label>
-    <span id="manifest-name">loading manifest…</span>
-  </p>
+  <header class="app-bar" data-app="flash"></header>
 
-  <fieldset>
-    <legend>transport</legend>
-    <label><input type="radio" name="transport" value="webusb" checked> WebUSB (probe-rs in this tab)</label>
-    <label><input type="radio" name="transport" value="websocket"> WebSocket to <code>probe-rs serve</code></label>
-    <label>url <input type="text" id="ws-url" value="ws://127.0.0.1:3000" size="24"></label>
-    <label>token <input type="text" id="ws-token" value="" size="10"></label>
-    <button id="connect">Connect</button>
-    <span id="conn-status" class="muted"></span>
-  </fieldset>
+  <div class="workspace">
+    <aside class="sidebar" id="sidebar" aria-label="Setup">
+      <details class="view" id="view-connection" open>
+        <summary><span class="step">1</span>Connection<span class="badge"></span></summary>
+        <div class="view-body">
+          <div class="segmented" role="radiogroup" aria-label="transport">
+            <label title="probe-rs runs in this tab and talks to the probe over WebUSB"><input type="radio" name="transport" value="webusb" checked> WebUSB <small>probe-rs in this tab</small></label>
+            <label title="Connect to a native probe-rs serve"><input type="radio" name="transport" value="websocket"> WebSocket <small>probe-rs serve</small></label>
+          </div>
+          <div class="fields ws-only">
+            <label class="field"><span>url</span><input type="text" id="ws-url" value="ws://127.0.0.1:3000" size="24"></label>
+            <label class="field"><span>token</span><input type="text" id="ws-token" value="" size="10"></label>
+          </div>
+          <div class="actions">
+            <button id="connect" class="primary">Connect</button>
+            <span id="conn-status" class="status-text"></span>
+          </div>
+        </div>
+      </details>
 
-  <h2>1. Probe</h2>
-  <probe-device-picker id="picker"></probe-device-picker>
+      <details class="view" id="view-probe" open>
+        <summary><span class="step">2</span>Probe<span class="badge"></span></summary>
+        <div class="view-body">
+          <probe-device-picker id="picker"></probe-device-picker>
+        </div>
+      </details>
 
-  <h2>2. Target</h2>
-  <label>chip <input type="text" id="chip" size="14"></label>
-  <label>protocol <select id="protocol"><option value="">auto</option><option>Swd</option><option>Jtag</option></select></label>
-  <button id="attach">Attach</button>
-  <span id="attach-status" class="muted"></span>
-  <probe-target-picker id="targets"></probe-target-picker>
+      <details class="view" id="view-target" open>
+        <summary><span class="step">3</span>Target<span class="badge"></span></summary>
+        <div class="view-body">
+          <div class="fields">
+            <label class="field"><span>chip</span><input type="text" id="chip" size="14" placeholder="auto-detect"></label>
+            <label class="field"><span>protocol</span><select id="protocol"><option value="">auto</option><option>Swd</option><option>Jtag</option></select></label>
+          </div>
+          <div class="actions">
+            <button id="attach" class="primary">Attach</button>
+            <span id="attach-status" class="status-text"></span>
+          </div>
+          <probe-target-picker id="targets"></probe-target-picker>
+        </div>
+      </details>
+    </aside>
+    <div class="sash" id="sidebar-sash" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
 
-  <h2>3. Flash</h2>
-  <probe-flash-panel id="flash"></probe-flash-panel>
+    <main class="main">
+      <div class="scroll">
+        <div class="content">
+          <section class="card" aria-labelledby="flash-title">
+            <div class="card-header">
+              <h2 id="flash-title"><span class="step-inline">4</span> Flash</h2>
+              <span class="spacer"></span>
+              <label class="check muted">Demo firmware
+                <select id="demo" title="Images built and shipped with this site">
+                  <option value="">loading…</option>
+                </select>
+              </label>
+              <span id="manifest-name" class="muted">loading manifest…</span>
+            </div>
+            <div class="card-body">
+              <probe-flash-panel id="flash"></probe-flash-panel>
+            </div>
+          </section>
+        </div>
+      </div>
 
-  <h2>4. RTT</h2>
-  <probe-rtt-terminal id="rtt"></probe-rtt-terminal>
-  <h2>5. Semihosting</h2>
-  <probe-semihosting-console id="semi"></probe-semihosting-console>
-  <h2>6. Serial</h2>
-  <probe-serial-monitor id="serial"></probe-serial-monitor>
+      <div class="sash horizontal" id="panel-sash" role="separator" aria-orientation="horizontal" aria-label="Resize output panel"></div>
+      <section class="output-panel" id="panel" aria-label="Output">
+        <div role="tablist" id="panel-tabs" aria-label="Output">
+          <button role="tab" id="tab-rtt" aria-controls="panel-rtt">RTT</button>
+          <button role="tab" id="tab-semi" aria-controls="panel-semi">Semihosting</button>
+          <button role="tab" id="tab-serial" aria-controls="panel-serial">Serial</button>
+          <button role="tab" id="tab-log" aria-controls="panel-log">Log</button>
+        </div>
+        <div role="tabpanel" id="panel-rtt" aria-labelledby="tab-rtt"><probe-rtt-terminal id="rtt"></probe-rtt-terminal></div>
+        <div role="tabpanel" id="panel-semi" aria-labelledby="tab-semi" hidden><probe-semihosting-console id="semi"></probe-semihosting-console></div>
+        <div role="tabpanel" id="panel-serial" aria-labelledby="tab-serial" hidden><probe-serial-monitor id="serial"></probe-serial-monitor></div>
+        <div role="tabpanel" id="panel-log" aria-labelledby="tab-log" hidden><pre class="log" id="log"></pre></div>
+      </section>
+    </main>
+  </div>
 
-  <pre class="log" id="log"></pre>
+  <footer class="status-bar">
+    <span class="item dot" id="sb-connection">not connected</span>
+    <span class="item" id="sb-probe"></span>
+    <span class="item" id="sb-target"></span>
+    <span class="spacer"></span>
+    <span class="item" id="sb-flash"></span>
+  </footer>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>

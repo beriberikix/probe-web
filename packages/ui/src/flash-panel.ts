@@ -2,6 +2,8 @@ import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { FlashJob, FormatName, Session, Wire } from '@probe-web/client';
 import { FileArtifact, forgetHandle, hasFileSystemAccess, pickFile, recallHandle, rememberHandle } from '@probe-web/artifacts';
+import { baseStyles } from './base-style.ts';
+import { icon } from './icons.ts';
 
 interface Bar { operation: string; total: number | null; done: number; state: 'pending' | 'running' | 'done' | 'failed'; startedAt: number }
 
@@ -41,19 +43,42 @@ interface Bar { operation: string; total: number | null; done: number; state: 'p
 @customElement('probe-flash-panel')
 export class ProbeFlashPanel extends LitElement {
   /** @internal */
-  static styles = css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-    label { display: inline-flex; gap: 4px; align-items: center; }
-    input[type=text] { font: inherit; width: 9em; }
-    select, button, input { font: inherit; }
-    button.primary { background: #2563eb; color: white; border: 0; padding: 7px 14px; border-radius: 6px; }
-    button[disabled] { opacity: .5; }
-    .bar { display: grid; grid-template-columns: 6em 1fr 8em; gap: 8px; align-items: center; margin: 4px 0; }
-    progress { width: 100%; }
-    .done { color: #15803d; } .failed { color: #b91c1c; } .diag { color: #666; font-family: ui-monospace, monospace; white-space: pre-wrap; }
-    .layout { font-size: 12px; color: #444; }
-  `;
+  static styles = [baseStyles, css`
+    .row { gap: 8px 12px; margin: 0 0 10px; }
+    .source { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px;
+      border-radius: 999px; background: var(--_default-soft); font-size: 12px;
+    }
+    .chip.watching { background: var(--_brand-soft); }
+    .chip button { min-height: 20px; padding: 0 8px; font-size: 12px; background: transparent; }
+    .chip button:hover:not(:disabled) { background: var(--_default-soft); }
+    input[type=text] { width: 9em; }
+    .options { color: var(--_text-2); gap: 14px; }
+    .actions { padding-top: 10px; border-top: 1px solid var(--_divider); }
+    button.primary { min-height: 32px; padding: 0 18px; font-size: 14px; }
+    .bars { display: grid; gap: 6px; margin-top: 12px; }
+    .bar { display: grid; grid-template-columns: 6.5em 1fr 9em; gap: 10px; align-items: center; font-size: 12px; }
+    .bar > :last-child { text-align: right; color: var(--_text-2); font-variant-numeric: tabular-nums; }
+    progress { appearance: none; width: 100%; height: 6px; border: 0; border-radius: 3px; overflow: hidden; background: var(--_default-3); }
+    progress::-webkit-progress-bar { background: var(--_default-3); }
+    progress::-webkit-progress-value { background: var(--_brand-3); transition: width 0.2s; }
+    progress::-moz-progress-bar { background: var(--_brand-3); }
+    .bar.done progress::-webkit-progress-value { background: var(--_green-2); }
+    .bar.done progress::-moz-progress-bar { background: var(--_green-2); }
+    .bar.failed progress::-webkit-progress-value { background: var(--_red-2); }
+    .pending { color: var(--_text-3); }
+    .done { color: var(--_green-1); } .failed { color: var(--_red-1); }
+    .diag { color: var(--_text-2); font-family: var(--_mono); font-size: 12px; white-space: pre-wrap; margin-top: 6px; }
+    .layout { font-size: 12px; color: var(--_text-2); margin-top: 10px; }
+    p.done, p.failed {
+      display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 8px 12px;
+      border-radius: var(--_radius-lg); font-weight: 500;
+    }
+    p.done { background: var(--_green-soft); }
+    p.failed { background: var(--_red-soft); }
+  `];
+
 
   /** The attached session to flash through; the buttons are disabled without one. */
   @property({ attribute: false }) session: Session | null = null;
@@ -316,38 +341,42 @@ export class ProbeFlashPanel extends LitElement {
     const job = this.effectiveJob;
     return html`
       <div class="row">
-        <input type="file" @change=${this.onFile} ?disabled=${this.busy}>
-        ${hasFileSystemAccess() ? html`<button @click=${this.pickAndWatch} ?disabled=${this.busy}>Pick file & watch…</button>` : nothing}
-        ${this.remembered && !this.artifact ? html`<span>last watched <b>${this.remembered.name}</b>
+        <span class="source">
+          <input type="file" @change=${this.onFile} ?disabled=${this.busy}>
+          ${hasFileSystemAccess() ? html`<button @click=${this.pickAndWatch} ?disabled=${this.busy}>${icon('eye', 14)}Pick file & watch…</button>` : nothing}
+        </span>
+        ${this.remembered && !this.artifact ? html`<span class="chip">last watched <b>${this.remembered.name}</b>
           <button @click=${this.resumeWatch} ?disabled=${this.busy}>Resume watching</button>
-          <button @click=${this.forgetRemembered}>✕</button></span>` : nothing}
-        ${this.artifact ? html`<span>watching <b>${this.artifact.name}</b>${this.watching ? '' : ' (click Flash to re-grant access)'}
+          <button title="forget" @click=${this.forgetRemembered}>✕</button></span>` : nothing}
+        ${this.artifact ? html`<span class="chip watching">${icon('eye', 14)} watching <b>${this.artifact.name}</b>${this.watching ? '' : ' (click Flash to re-grant access)'}
           <label><input type="checkbox" .checked=${this.autoReflash} @change=${(e: Event) => (this.autoReflash = (e.target as HTMLInputElement).checked)}> re-flash on change</label>
-          <button @click=${this.clearArtifact}>✕</button></span>` : nothing}
-        ${this.job && !this.file && !this.artifact ? html`<span>preset: ${this.job.name ?? 'image'}</span>` : nothing}
+          <button title="stop watching" @click=${this.clearArtifact}>✕</button></span>` : nothing}
+        ${this.job && !this.file && !this.artifact ? html`<span class="chip">${icon('file', 14)} preset: ${this.job.name ?? 'image'}&nbsp;</span>` : nothing}
         <label>format
           <select .value=${this.format} @change=${(e: Event) => (this.format = (e.target as HTMLSelectElement).value as FormatName)} ?disabled=${this.busy}>
             ${(['target', 'elf', 'bin', 'hex', 'uf2', 'idf'] as FormatName[]).map((f) => html`<option value=${f} ?selected=${f === this.format}>${f}</option>`)}
           </select></label>
         ${this.format === 'bin' ? html`<label>address <input type="text" placeholder="0x08000000" .value=${this.baseAddress} @input=${(e: Event) => (this.baseAddress = (e.target as HTMLInputElement).value)}></label>` : nothing}
       </div>
-      <div class="row">
+      <div class="row options">
         <label><input type="checkbox" .checked=${this.verify} @change=${(e: Event) => (this.verify = (e.target as HTMLInputElement).checked)}> verify</label>
         <label><input type="checkbox" .checked=${this.chipErase} @change=${(e: Event) => (this.chipErase = (e.target as HTMLInputElement).checked)}> full chip erase</label>
         <label><input type="checkbox" .checked=${this.keepUnwritten} @change=${(e: Event) => (this.keepUnwritten = (e.target as HTMLInputElement).checked)}> keep unwritten bytes</label>
-        <button class="primary" @click=${this.flash} ?disabled=${this.busy || !this.session || !job}>${this.busy ? 'Working…' : 'Flash'}</button>
+      </div>
+      <div class="row actions">
+        <button class="primary" @click=${this.flash} ?disabled=${this.busy || !this.session || !job}>${icon('zap', 15)}${this.busy ? 'Working…' : 'Flash'}</button>
         <button @click=${this.verifyOnly} ?disabled=${this.busy || !this.session || !job}>Verify only</button>
         <button @click=${this.eraseAll} ?disabled=${this.busy || !this.session}>Erase all</button>
       </div>
       ${this.layout ? html`<div class="layout">${this.layout}</div>` : nothing}
-      ${this.bars.map((b) => html`
-        <div class="bar">
+      ${this.bars.length ? html`<div class="bars">${this.bars.map((b) => html`
+        <div class="bar ${b.state}">
           <span class=${b.state}>${b.operation}</span>
           <progress max=${b.total ?? 1} value=${b.state === 'done' ? (b.total ?? 1) : b.done}></progress>
           <span>${b.total !== null ? `${fmt(b.done)} / ${fmt(b.total)}` : b.state}</span>
-        </div>`)}
+        </div>`)}</div>` : nothing}
       ${this.diagnostics.map((d) => html`<div class="diag">${d}</div>`)}
-      ${this.result ? html`<p class=${this.result.startsWith('Failed') ? 'failed' : 'done'}>${this.result}</p>` : nothing}
+      ${this.result ? html`<p class=${this.result.startsWith('Failed') ? 'failed' : 'done'}>${icon(this.result.startsWith('Failed') ? 'x' : 'check', 16)}${this.result}</p>` : nothing}
     `;
   }
 }

@@ -20,12 +20,14 @@ const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
 export class ProbeDisassembly extends DebuggerElement {
   /** @internal */
   static styles = [debugStyles, css`
-    .gutter { width: 1.2em; cursor: pointer; color: #dc2626; text-align: center; user-select: none; }
-    .gutter:hover::after { content: '○'; color: #f87171; }
+    .gutter { width: 1.2em; cursor: pointer; color: var(--_red-2); text-align: center; user-select: none; }
+    .gutter:hover::after { content: '●'; color: var(--_red-2); opacity: 0.4; }
     .gutter.bp:hover::after { content: ''; }
-    tr.pc { background: #fef9c3; }
-    tr.src td { color: #555; font-size: 11px; padding-top: 6px; }
-    .bytes { color: #999; }
+    tr.pc, tr.pc:hover { background: var(--_yellow-soft); box-shadow: inset 2px 0 var(--_yellow-2); }
+    tr.src:hover { background: none; }
+    tr.src td { color: var(--_text-2); font-family: var(--pw-font-family-base, system-ui, sans-serif); font-size: 11px; padding-top: 8px; }
+    td:nth-child(2) { color: var(--_text-2); }
+    .bytes { color: var(--_text-3); }
   `];
 
   /** Instructions shown before the anchor address (the PC, or the address given to {@link ProbeDisassembly.show}). */
@@ -81,7 +83,7 @@ export class ProbeDisassembly extends DebuggerElement {
 
   render() {
     const d = this.debugger;
-    if (!d) return html`<div class="muted">no debugger</div>`;
+    if (!d) return html`<div class="muted empty">no debugger</div>`;
     if (!this.available) {
       return html`<div class="muted unavailable">Disassembly is not available on this connection (the WebUSB transport has no disassembler; use probe-rs serve for it).</div>`;
     }
@@ -98,7 +100,7 @@ export class ProbeDisassembly extends DebuggerElement {
         <button ?disabled=${this.follow} @click=${() => this.show(null)}>Follow PC</button>
       </div>
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
-      ${this.rows.length === 0 ? html`<div class="muted">halt the core to see code</div>` : nothing}
+      ${this.rows.length === 0 ? html`<div class="muted empty">halt the core to see code</div>` : nothing}
       <table class="mono">
         ${this.rows.map((r) => {
           const src = r.source?.line ? `${basename(r.source.path)}:${r.source.line}` : '';

@@ -1,6 +1,8 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { MonitorEvent, Session, Wire } from '@probe-web/client';
+import { baseStyles } from './base-style.ts';
+import { icon } from './icons.ts';
 
 interface Row {
   test: Wire.Test;
@@ -29,19 +31,27 @@ interface Row {
 @customElement('probe-test-runner')
 export class ProbeTestRunner extends LitElement {
   /** @internal */
-  static styles = css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-    button { font: inherit; padding: 5px 9px; }
+  static styles = [baseStyles, css`
+    .row { margin: 0 0 8px; }
     table { border-collapse: collapse; width: 100%; font-size: 12px; }
-    td, th { padding: 3px 8px; text-align: left; border-bottom: 1px solid #eee; }
-    th { color: #666; font-weight: 500; }
-    .name { font-family: ui-monospace, monospace; }
-    .pass { color: #15803d; } .fail { color: #b91c1c; } .muted, .ignored { color: #666; }
-    .running { color: #1d4ed8; }
-    .detail { color: #b91c1c; font-size: 11px; }
-    output { display: block; margin-top: 6px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; max-height: 140px; overflow: auto; color: #444; }
-  `;
+    td, th { padding: 3px 8px; text-align: left; border-bottom: 1px solid var(--_divider); }
+    th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--_text-2); }
+    tbody tr:hover, tr[data-test]:hover { background: var(--_default-soft); }
+    .name { font-family: var(--_mono); }
+    td.pass, td.fail, td.running, td.ignored, td.pending { font-weight: 500; }
+    td.pass::before, td.fail::before, td.running::before, td.ignored::before {
+      content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%;
+      background: currentColor; vertical-align: 1px;
+    }
+    .pass { color: var(--_green-1); } .fail { color: var(--_red-1); } .muted, .ignored { color: var(--_text-2); }
+    .running { color: var(--_brand-1); }
+    .detail { color: var(--_red-1); font-size: 11px; font-weight: 400; }
+    output {
+      display: block; margin-top: 8px; padding: 6px 10px; white-space: pre-wrap; font-family: var(--_mono); font-size: 11px;
+      max-height: 140px; overflow: auto; color: var(--_text-2); background: var(--_bg-soft); border-radius: var(--_radius);
+    }
+  `];
+
 
   /** The attached session whose `tests/*` endpoints run the suite. */
   @property({ attribute: false }) session: Session | null = null;
@@ -139,7 +149,7 @@ export class ProbeTestRunner extends LitElement {
     return html`
       <div class="row">
         <button id="list" @click=${this.list} ?disabled=${this.busy || !this.bootInfo}>List tests</button>
-        <button id="run-all" @click=${this.runAll} ?disabled=${this.busy || this.rows.length === 0}>Run all</button>
+        <button id="run-all" class="primary" @click=${this.runAll} ?disabled=${this.busy || this.rows.length === 0}>${icon('play', 12)}Run all</button>
         ${this.rows.length ? html`<span class="muted" id="summary">${s.passed} passed, ${s.failed} failed, ${s.ignored} ignored of ${s.total}</span>` : nothing}
       </div>
       ${!this.bootInfo ? html`<div class="muted">flash an embedded-test firmware first</div>` : nothing}

@@ -1,5 +1,6 @@
 // The smallest complete flashing page: grant a probe over WebUSB, attach with probe-rs running
 // in a Worker in this tab, flash a demo image with progress, and let it run.
+import '@probe-web/ui/theme.css'; // the look shared with the docs; not needed to flash
 import { Client, progressOperation } from '@probe-web/client';
 import { requestProbe } from '@probe-web/devices';
 
