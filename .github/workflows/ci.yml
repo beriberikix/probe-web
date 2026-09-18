@@ -69,4 +69,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       # The lint that keeps host-only APIs (thread::sleep, std Instant) out of wasm builds.
-      - run: cargo clippy --target wasm32-unknown-unknown -p probe-web-core -p probe-web-local -- -D warnings
+      - run: cargo clippy --target wasm32-unknown-unknown -p probe-web-core -p probe-web-local -p probe-web-targets -- -D warnings
+      # probe-web-targets is pure (bytes in, YAML out), so it has real unit tests and
+      # they run on the host. The vendor-.FLM corpus test skips unless PROBE_WEB_FLM_DIR
+      # is set; the formatter tests, which guard re-loadability, always run.
+      - run: cargo test -p probe-web-targets

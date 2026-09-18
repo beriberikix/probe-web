@@ -8,6 +8,7 @@
 #     "../probe-rs/probe-rs-debug",
 #     "../prs-wasm-rpc/probe-rs-rpc",
 #     "../prs-wasm-rpc/probe-rs-rpc-client",
+#     "../cmsis-pack-manager/rust/cmsis-pack",
 # ]
 
 [target.wasm32-unknown-unknown]

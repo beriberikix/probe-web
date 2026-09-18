@@ -21,8 +21,52 @@ test('target picker searches the registry, shows chip info, imports YAML', async
   const fileInput = picker.locator('input[type=file]');
   await expect(fileInput).toBeEnabled();
   await fileInput.setInputFiles('apps/flash/public/targets/test-family.yaml');
-  await expect(picker).toContainText(/importing test-family.yaml|imported test-family.yaml/);
+  await expect(picker).toContainText(/reading test-family.yaml|imported test-family.yaml/);
   await expect(picker).toContainText(/imported test-family.yaml: 1 new family/);
   await picker.locator('input[type=text]').fill('MCXA153-imported');
   await expect(picker.locator('li', { hasText: 'MCXA153-imported' })).toHaveCount(1);
+});
+
+test('target picker imports a CMSIS pack and lists its families', async ({ page }) => {
+  // Same reason as above: the registry needs a connected client.
+  test.slow();
+  await page.goto('/?auto=1&transport=webusb&fake=1');
+  await expect(page.locator('#log')).toContainText('AUTORUN_DONE', { timeout: 45_000 });
+
+  const picker = page.locator('probe-target-picker');
+  const fileInput = picker.locator('input[type=file]');
+  await expect(fileInput).toBeEnabled();
+
+  // A pack is not loaded wholesale: its families are listed for the user to choose from,
+  // because a real vendor DFP carries dozens.
+  await fileInput.setInputFiles('apps/flash/public/targets/minimal.pack');
+  await expect(picker).toContainText('1 family — choose what to load');
+  const pending = picker.locator('#pending li');
+  await expect(pending).toHaveCount(1);
+  await expect(pending.first()).toContainText('ProbeWebTest');
+  await expect(pending.first()).toContainText('1 chip');
+
+  await pending.first().click();
+  await expect(picker).toContainText(/imported ProbeWebTest \(minimal.pack\): 1 new family/);
+
+  // And the chip is now in the registry, which is the whole point.
+  await picker.locator('input[type=text]').fill('ProbeWebTestChip');
+  await expect(picker.locator('li', { hasText: 'ProbeWebTestChip' })).toHaveCount(1);
+});
+
+test('target picker reports a wrong file as a readable error', async ({ page }) => {
+  test.slow();
+  await page.goto('/?auto=1&transport=webusb&fake=1');
+  await expect(page.locator('#log')).toContainText('AUTORUN_DONE', { timeout: 45_000 });
+
+  const picker = page.locator('probe-target-picker');
+  await expect(picker.locator('input[type=file]')).toBeEnabled();
+  // Picking the wrong file is the common mistake; the typed fault has to surface as a
+  // sentence, not a stack trace.
+  await picker.locator('input[type=file]').setInputFiles({
+    name: 'not-really.pack',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('this is not a zip'),
+  });
+  await expect(picker).toContainText(/import failed:.*not a readable \.pack archive/);
 });

@@ -6,12 +6,14 @@
     ".": "./src/index.ts",
     "./wire": "./src/wire.ts",
     "./testing": "./src/testing/fake-debugger.ts",
-    "./testing/worker": "./src/testing/fake-worker.ts"
+    "./testing/worker": "./src/testing/fake-worker.ts",
+    "./targets": "./src/targets.ts"
   },
   "files": [
     "src",
     "wasm",
-    "worker"
+    "worker",
+    "targets"
   ],
   "scripts": {
     "test": "vitest run"

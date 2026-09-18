@@ -5,5 +5,49 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
+description = "CMSIS-Pack and FLM ingestion in the browser: vendor flash algorithms and chip descriptions into probe-rs target YAML"
+
+# A cdylib of its own rather than part of probe-web-core: the flasher never imports a
+# pack, so this stays out of the wasm every page loads. See src/wasm.rs.
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+anyhow = "1"
+log = "0.4"
+# The chip-description types. This must stay the same version the worker's probe-rs
+# parses with (`chips/load` -> `add_target_family_from_yaml`), so it comes from the same
+# fork revision: master's 0.32 changed several field types (see the Phase 5 plan).
+probe-rs-target = { git = "https://github.com/beriberikix/probe-rs", branch = "webusb/nusb-0.2.7" }
+# ELF reader for .FLM flash algorithms. Same version and features as the fork's target-gen.
+goblin = { version = "0.9", default-features = false, features = [
+    "elf32",
+    "elf64",
+    "endian_fd",
+    "archive",
+    "std",
+] }
+scroll = "0.12"
+# CMSIS .pdsc parsing. Our fork makes the downloading half optional: upstream declares
+# reqwest and tokio unconditionally and so does not build for wasm32 at all. See the
+# [patch.crates-io] note in the workspace manifest.
+cmsis-pack = { version = "0.7.2", default-features = false }
+# Packs are zip archives. `deflate` covers what vendors mostly ship, with `deflate64`
+# and `lzma` for the rest; all three are pure Rust. Not `zstd` or `bzip2` -- they are
+# C-linked, and nothing C goes into a wasm build here.
+zip = { version = "2.0", default-features = false, features = [
+    "deflate",
+    "deflate64",
+    "lzma",
+] }
+jep106 = "0.3"
+wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+console_error_panic_hook = { workspace = true }
+# The dialect `probe-rs`'s registry reads back (`serde_yaml::from_str::<ChipFamily>`).
+serde = { workspace = true }
+serde_yaml = "0.9"
+
+[dev-dependencies]
+# The fault tests build a zip that is not a pack.
+zip = { version = "2.0", default-features = false, features = ["deflate"] }

@@ -254,6 +254,44 @@ if (qs.has('serialtest')) {
   })();
 }
 
+// ?targets=1: expose the pack/FLM importer so a browser test can drive it with bytes
+// from disk. The module is loaded the same way the target picker loads it, which is the
+// point -- it checks that the separate targets wasm really instantiates in a browser,
+// not just that it compiles.
+if (qs.has('targets')) {
+  const targets = await import('@probe-web/client/targets');
+  (window as unknown as { probeWebTargets: typeof targets }).probeWebTargets = targets;
+  log('TARGETS_READY');
+}
+
+/**
+ * ?pack=<url>[&family=<name>]: import a CMSIS pack into the connected registry before
+ * attaching, so a chip probe-rs does not ship a target for can still be flashed. This is
+ * the whole pack story end to end — vendor archive in, working flash out — and it is the
+ * hardware check for it.
+ */
+async function importPack(c: Client): Promise<boolean> {
+  const url = qs.get('pack')!;
+  const want = qs.get('family');
+  try {
+    const t0 = performance.now();
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const { packToYaml } = await import('@probe-web/client/targets');
+    const families = await packToYaml(bytes);
+    const chosen = want ? families.filter((f) => f.name.toLowerCase() === want.toLowerCase()) : families;
+    if (chosen.length === 0) {
+      log(`pack: no family named ${want} in ${url} (found ${families.map((f) => f.name).join(', ')})`);
+      return false;
+    }
+    for (const family of chosen) await c.loadChipFamily(family.yaml);
+    log(`pack: ${url} (${bytes.length} bytes) -> ${chosen.length}/${families.length} famil${chosen.length === 1 ? 'y' : 'ies'} loaded in ${Math.round(performance.now() - t0)} ms: ${chosen.map((f) => `${f.name} (${f.variants} chips)`).join(', ')}`);
+    return true;
+  } catch (e) {
+    log(`pack: import failed: ${(e as Error).message}`);
+    return false;
+  }
+}
+
 if (qs.has('auto')) {
   const transport = qs.get('transport') ?? 'webusb';
   (document.querySelector(`input[name=transport][value=${transport}]`) as HTMLInputElement).checked = true;
@@ -283,7 +321,10 @@ if (qs.has('auto')) {
       }
     } else if (chosen) {
       probe = chosen;
-      const s = await attach();
+      // A pack has to be in the registry before attach() resolves the chip name.
+      const packOk = qs.has('pack') ? await importPack(c) : true;
+      if (qs.get('chip')) $<HTMLInputElement>('chip').value = qs.get('chip')!;
+      const s = packOk ? await attach() : null;
       if (s && qs.has('fake')) {
         // The mocked core cannot run flash algorithms; prove the transport with memory ops.
         const core = s.core(0);
