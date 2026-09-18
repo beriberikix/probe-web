@@ -423,3 +423,418 @@ Open at the time of writing, all since resolved except the last:
 - 2026-09-18 — **Cortex-M re-verified after the step-out and unwind changes — MCXA153 all green.** The step-out strategy is `server` on Arm and the new `unwind_frame_registers` hook is a no-op there, so neither change should reach this path; confirmed on hardware rather than by argument.
   - WebUSB: SDK spike `debug.html?spike=webusb-src&…` **11/11** (step out still `step_a:58`, through probe-rs as before), components page **13/13**, workbench **12/12** (the source came from the shipped `firmware/src/`, so the remapped DWARF paths work on Arm too — `/probe-web-firmware/cm33-debug/src/main.rs`), Monaco IDE **PASS**.
   - WebSocket through `probe-rs serve`: Node `debug.ts` **42 checks, `DEBUG_RESULT=PASS`**, Node `dap.ts` **`DAP_RESULT=PASS`**, components page **13/13**.
+
+## Phase 5 log
+
+Plan: `~/.claude/plans/i-have-attached-an-snug-donut.md` ("Current task: Phase 5"). The
+last roadmap phase: pack and FLM ingestion in the browser (`probe-web-targets`), plus
+the cheap gaps left behind — coredump export, `Embed.toml`/`launch.json` import, an
+embedded-test runner and RTT plotting. Dropped from the phase: proposing `trace/*`
+endpoints upstream, since no SWO/ITM endpoints exist in `probe-rs-rpc` at all and
+upstream PRs are still "not yet". Decided 2026-09-18: **local file import only** — no
+pack fetching, no Keil `pidx`, no CORS proxy.
+
+Slices: [x] 1. FLM core · [x] 2. PDSC → ChipFamily · [x] 3. wasm facade + CI ·
+[x] 4. picker import · [ ] 5. coredump · [ ] 6. config import · [ ] 7. embedded-test ·
+[ ] 8. RTT plot · [ ] 9. close-out
+
+- 2026-09-18 — **Slice 1: `.FLM` → loadable target YAML — PASS on 252 real vendor algorithms.**
+  `crates/probe-web-targets` was an empty one-line placeholder; it is now the pure core of
+  `target-gen` with the filesystem and network removed — `flash_device.rs`,
+  `algorithm_binary.rs`, `flm.rs` (was `parser.rs`) and `yaml.rs` (the serializer out of
+  `commands/elf.rs`). Public API: `flm_to_algorithm`, `flm_to_algorithm_yaml` (a
+  `flash_algorithms` fragment to paste into a family you already have — the answer to
+  "probe-rs knows my chip but not my board's external flash") and `flm_to_family_yaml` (a
+  complete placeholder family). Bytes in, `String` out, no I/O, so it tests on the host and
+  runs in wasm unchanged. Depends on `probe-rs-target` alone, not `probe-rs`: the one
+  helper it needed, `FlashAlgorithm::get_max_algorithm_header_size()`, is a `max` over
+  three `const` headers, so it is inlined as `MAX_ALGORITHM_HEADER_SIZE = 8` rather than
+  pulling a second copy of probe-rs into a wasm binary.
+  - Corpus: every one of the **252 `.FLM` files in a real Renesas RA DFP (6.5.1, 90 MB)**
+    converts, deserializes back through the same `serde_yaml` path the worker's registry
+    uses, and passes `ChipFamily::validate()` — the actual gate `chips/load` applies. Vendor
+    packs are large and not ours to redistribute, so nothing is committed: the test skips
+    unless `PROBE_WEB_FLM_DIR` points at a directory of `.FLM` files.
+  - **The port could not be a copy.** The fork's own `target-gen` no longer compiles against
+    the fork's own `probe-rs-target` — it is commented out of that workspace
+    (`probe-rs/Cargo.toml:20`), so nothing ever builds it, and it still puts `svd` on `Chip`
+    where the schema has moved it to `Core`. Porting from probe-rs master instead would have
+    been worse: master's 0.32 made `pc_program_page`, `pc_erase_sector` and
+    `data_section_offset` `Option<u64>` and added `big_endian` / `vendor_functions`, none of
+    which the 0.28 the worker parses with will accept. Matching the consumer is the rule.
+  - **Found on the way:** the algorithm fragment was serialized with a plain
+    `serde_yaml::to_string` and did not round-trip — `serde_yaml` writes the schema's
+    hex-formatted integers as quoted strings, and `pc_init: '0x1'` is not a `u64`. The
+    cleanup pass that `serialize_to_yaml_string` already did for whole families is now
+    shared by both paths. That is what the formatter tests assert: re-loadability, not
+    appearance.
+  - `cargo test -p probe-web-targets` 5/5 (3 host-only + 2 corpus), `cargo fmt --all --check`
+    clean, `cargo clippy --target wasm32-unknown-unknown -p probe-web-targets -- -D warnings`
+    clean, and the crate builds for `wasm32-unknown-unknown`. CI now lints **and tests** it —
+    it was in the workspace but absent from both lists, so it had been unchecked since it was
+    created. No `.wasm` size to record yet: it is an rlib until slice 3 adds the
+    wasm-bindgen facade.
+  - vitest 38/38 unchanged (this slice is Rust-only).
+
+- 2026-09-18 — **Slice 2: `.pack` → chip families — PASS on a 90 MB Renesas RA DFP: 40 families, 114 chips, 203 flash algorithms.**
+  `pack.rs` ports `generate.rs` with everything that touched a disk or a network removed —
+  `Kind::Directory`, `visit_dirs`/`walk_files`, and the `visit_arm_*` functions that
+  downloaded from Keil. The in-memory path needed no rewriting: `zip::ZipArchive` is
+  already generic over `Read + Seek`, so a `Cursor<Vec<u8>>` over the bytes a file input
+  handed us drops straight in where the CLI passed a file handle. Also removed, and this
+  is what keeps a second copy of probe-rs out of wasm: the
+  `Registry::from_builtin_families()` filter (skipping families the registry has not heard
+  of is exactly backwards here — importing an unsupported chip is the point) and
+  `get_max_algorithm_header_size()`, inlined in slice 1. `svds_from_pack` is new, not a
+  port: `target-gen` always writes `svd: None`, but a pack carries its SVDs and the
+  Peripherals view already takes SVD text, so an import can fill it in with no download.
+  - **`cmsis-pack` does not build for wasm32, and the fix is 30 lines.** Upstream
+    (`pyocd/cmsis-pack-manager`, Apache-2.0) declares `reqwest` and `tokio` as
+    non-optional, and on wasm32 reqwest's browser backend has no `ClientBuilder::redirect`
+    while tokio's `time` module is gated out — 7 compile errors, all of them inside
+    `update/download.rs`. `default-features = false` is no help: `[features] default = []`
+    is empty. But the networking is *confined*: of 2,299 lines, only `update/` (430) touches
+    it, and `pdsc/`, `pack_index/` and `utils/` need just `anyhow`, `roxmltree`, `serde`
+    and `serde_json`. So the fork (`../cmsis-pack-manager`, branch `wasm/optional-network`)
+    puts `mod update` and its four dependencies behind a **default-on** `update` feature:
+    wasm32 builds with `--no-default-features`, and every existing consumer is untouched
+    through `default`. Verified both ways — wasm32 without it, native with it. This is
+    rung (c) of the plan's ladder; vendoring ~1.1k lines (rung d) was not needed.
+  - Corpus: the **Renesas RA DFP 6.5.1 (90 MB, 252 `.FLM`, 40 SVD)**. Every family it
+    produces re-serializes, deserializes through the worker's `serde_yaml` path and passes
+    `ChipFamily::validate()`; all 40 SVDs extract as well-formed documents. **0.11 s** for
+    the whole pack in release — including reading the 90 MB off disk, unzipping, parsing
+    the `.pdsc`, extracting 203 flash algorithms and validating 40 families. The plan
+    flagged pack parse time as a risk; it is not one. As with the `.FLM` corpus nothing is
+    committed: set `PROBE_WEB_PACK` to run it.
+  - `zip` carries `deflate`, `deflate64` and `lzma` — all pure Rust — but not `zstd` or
+    `bzip2`, which are C-linked. A pack using those will fail with a clear archive error
+    rather than silently producing nothing.
+  - `cargo test -p probe-web-targets` 7/7, fmt clean, wasm32 clippy clean with `-D warnings`.
+    vitest 38/38 unchanged (still Rust-only).
+  - The fork is hosted, on the user's decision: `beriberikix/cmsis-pack-manager`, branch
+    `wasm/optional-network` (`9f19331`), consumed through `[patch.crates-io]` as a git
+    dependency and pinned in `Cargo.lock`. A `[patch]` pointing at a sibling checkout was
+    the obvious first move and is a trap: when the path is absent cargo fails to load the
+    source for **every** crate in the workspace, so a clean clone could not build
+    `probe-web-core` either, not just the new crate. Verified by hiding the checkout and
+    rebuilding. `.cargo/config.toml` lists the crate in the commented `paths` override for
+    local work, next to the probe-rs ones.
+
+- 2026-09-18 — **Slice 3: the importer runs in a browser — targets wasm 863 KB, as a lazy chunk.**
+  `probe-web-targets` is now a cdylib of its own with a `wasm-bindgen` facade
+  (`packToYaml`, `packSvds`, `flmToYaml`, `flmToAlgorithm`), reached from TypeScript
+  through a new `@probe-web/client/targets` subpath. Deliberately **not** folded into
+  `probe-web-core`: the flasher is the page most people open and it never imports a pack,
+  so this stays out of the wasm every visitor pays for. The site went 31 → 32 MB and the
+  bundle is emitted as its own chunk (`targets-*.js` + `probe_web_targets_bg.wasm`), so it
+  is fetched the first time someone picks a `.pack` and never before.
+  - Errors follow `probe-web-core`'s rule — a JS `Error` with a `kind` property, so a UI
+    switches on the cause instead of matching message text. `fault.rs` defines the five a
+    user can act on: `bad-archive`, `no-pdsc`, `bad-pdsc`, `bad-elf`, `no-flash-device`,
+    each one both the machine-readable kind and the sentence to show.
+  - **Faults attached with `.context(..)` are not chain items.** The first `Fault::of` used
+    `error.chain().find_map(downcast_ref)` and always returned `None`, because anyhow keeps
+    a context value inside its own wrapper — the chain yields the wrapper, not the value.
+    `anyhow::Error::downcast_ref` is what searches context. A unit test now pins the exact
+    composition `flm.rs` uses, where a fault is buried under a later string context.
+  - **Caught by testing a stale artifact, again.** The browser check first reported `kind`
+    as `targets` where the Rust test said `bad-archive`: the `Fault::of` fix landed *after*
+    the last `build-wasm.sh`, so Chrome was running the previous wasm. Same shape as the
+    git-dependency trap in Phase 4 — when a Rust test and a browser test disagree, suspect
+    the artifact before the code.
+  - New `tests/fixtures/minimal.pack` (606 bytes): a CMSIS pack written for this repo, one
+    family, one chip, no flash algorithms and no vendor bytes, so CI exercises the whole
+    `.pdsc` path with nothing to redistribute. Both `cargo test` and Playwright use it.
+  - `tests/targets.spec.ts` drives the real module in Chrome via a `?targets=1` hook on the
+    flasher, in the same style as `?op=` and `?spike=`: it imports the fixture pack, checks
+    the YAML names the chip, and asserts both fault kinds reach JS intact.
+  - `cargo test -p probe-web-targets` 11/11, **Playwright 25/25** (24 + the new spec),
+    vitest 38/38, tsc clean, fmt clean, wasm32 clippy clean across all three crates,
+    `wire.ts` unchanged. `scripts/build-wasm.sh` builds and bindgens the third crate;
+    `packages/client` exports `./targets` and ships the directory.
+
+- 2026-09-18 — **Slice 4: flashed the MCXA153 from NXP's own vendor pack — `FLASH_RESULT=PASS`, and found two real bugs doing it.**
+  The whole story end to end, in a browser: fetch a 1.3 MB `NXP.MCXA153_DFP.pack`, convert
+  it to target YAML in wasm (101 ms), `chips/load` it, attach as `MCXA153VLH` (67 ms), flash
+  and verify 4 KiB (1794 ms). Read back out of band with the tab closed —
+  `probe-rs read --chip MCXA153 b8 0x1F000 32` returns `PROBEWEB-FIXED-BIN---000000`, so the
+  write was real. The pack's family **replaces** probe-rs's built-in `MCXA153` and renames the
+  variants (`MCXA153VLH`, not `MCXA153`), so a pass proves the pack's own flash algorithm ran,
+  not the shipped one. The same YAML then loaded and attached over WebSocket against native
+  `probe-rs serve`, which is the 0.28-vs-0.32 schema check from the plan: **the YAML we emit is
+  accepted by both**.
+  - **Bug 1, ours, pre-existing: `chips/load` never affected attach.** The worker added the
+    family to its own `Registry`, but `Probe::attach` builds a *fresh*
+    `Registry::from_builtin_families()` internally and resolves the chip name against that —
+    so an imported chip appeared in `chips/list` and then failed with
+    `ChipNotFound("MCXA153VLH")`. It survived since Phase 2 because the only test asserted the
+    family showed up in the *listing*. `Inner.registry` is now an `Arc<Registry>` passed to
+    `attach_with_registry` / `attach_under_reset_with_registry` (and on the fake-probe path
+    too); since `Registry` is not `Clone`, loading a family rebuilds it from the built-ins plus
+    the YAMLs seen so far, validating into a fresh registry first so a bad document cannot
+    leave a half-updated one. The regression test attaches to the imported chip rather than
+    merely listing it.
+  - **Bug 2, inherited from `target-gen`: multi-RAM chips come out unflashable.** After the
+    attach fix the flash failed with `No suitable RAM region is defined for target`. probe-rs
+    runs flash algorithms out of RAM, but a pack's `<memory>` `access` describes the CPU's view
+    and NXP marks all three MCXA153 RAMs non-executable; `target-gen`'s
+    `ensure_single_ram_region_is_executable` only helps a chip with exactly one RAM region.
+    The pack does say where the loader belongs — the `<algorithm>` element's `RAMstart`, which
+    becomes `load_address` — so `mark_algorithm_ram_executable` flags the region containing it.
+    That is knowledge, not a guess, and it is an improvement on upstream `target-gen`, whose
+    output for such a chip needs hand-editing before it will flash.
+  - `<probe-target-picker>` now takes `.yaml`, `.pack` and `.FLM` from the same input. A pack's
+    families are **listed for the user to choose** rather than loaded wholesale — the Renesas
+    DFP has 40 — with "load all" alongside. SVDs found in a pack are announced as a
+    `svds-found` event for a page with a Peripherals view. A `.FLM` import says plainly that
+    the chip name and memory map are placeholders.
+  - `?pack=<url>[&family=<name>]` on the flasher imports a pack before attach, which is what
+    the hardware check drives; `?chip=` overrides the manifest. The vendor pack itself is
+    **not** committed and must not be left in `apps/flash/public/` — that directory is the
+    deployed site's public root, so a pack dropped there for a hardware run gets published
+    (5.2 MB of two vendors' archives, caught by a site build before the commit).
+    `.gitignore` now refuses `apps/flash/public/*.pack`; serve the pack from anywhere else
+    for a run.
+  - `cargo test -p probe-web-targets` 11/11, **Playwright 28/28** (3 new), vitest 38/38, tsc,
+    fmt and wasm32 clippy clean. The vendor pack is not committed; the 606-byte
+    `apps/flash/public/targets/minimal.pack` written for this repo covers the same paths in CI,
+    served over HTTP for the `?pack=` flow and read from disk by the Rust and picker tests.
+
+- 2026-09-18 — **Slice 5: coredump export — a dump taken in Chrome opens in native probe-rs.**
+  `core/dump` and its wasm binding already existed; what was missing was a *file*.
+  `Core.dumpCoreFile(ranges)` returns the MessagePack encoding `probe_rs::CoreDump::store`
+  writes, `downloadBytes` in `@probe-web/artifacts` hands it to the user (that package's
+  first write-side function), and the workbench gained a **Dump core** button that takes its
+  ranges from `target/metadata` rather than guessing — a dump is only useful if it covers the
+  RAM a postmortem will read, and that differs per chip.
+  - MCXA153 over WebUSB: `?op=dump` captured **36 864 bytes of RAM across 3 regions into a
+    54 480-byte file in 594 ms**, and `cargo run -p probe-web-local --example check-coredump`
+    opened it with probe-rs's own `CoreDump::load_raw`: 20 registers, 3 ranges,
+    `core_type=Armv8m instruction_set=Thumb2`. That example is the point — the encoding is a
+    coupling to probe-rs's field names, so it is checked, not argued about.
+  - **The coupling bit on the first try, exactly where reasoning said it would not.** The
+    encoder reuses the RPC schema's wire types on the grounds that they serialize identically
+    to probe-rs's own — true for `RegisterId` (`#[serde(transparent)]` over `u16`),
+    `RegisterValue` (`{"U32": …}`) and `InstructionSet` (no rename), but **not** for
+    `CoreType`, which probe-rs declares `#[serde(rename_all = "snake_case")]`. The first file
+    said `"Armv8m"` where probe-rs wanted `"armv8m"` and was rejected outright. The core-type
+    names are now spelled out, and the module says which types are reused and why that one is
+    not.
+  - Worth keeping: probe-rs's own error is only "Decoding the coredump MessagePack failed",
+    and `source()` is not wired, so it names nothing. Deserializing directly with `rmp_serde`
+    gave `unknown variant Armv8m, expected one of armv6m, …` immediately. `check-coredump`
+    now does that automatically and prints the file's real structure when probe-rs refuses it.
+  - A second trap, and the reason the hardware check no longer relies on a download: Chrome
+    silently declines a *repeated* automatic download to the same name, so the second run
+    reported `DUMP_RESULT=PASS` with no file on disk. The bytes are now also left on
+    `window.lastCoredump`, which is what the check reads.
+  - CI cannot open a file with probe-rs, so the fake-probe suite asserts the shape instead:
+    a 7-entry MessagePack map (`0x87`) carrying probe-rs's seven field names. That is what
+    would catch a field being renamed or dropped.
+  - `cargo test -p probe-web-targets` 11/11, Playwright 28/28, vitest 38/38, tsc, fmt and
+    wasm32 clippy clean. `probe_web_core_bg.wasm` 1.80 → 1.84 MB (+32 KB, rmp-serde).
+
+- 2026-09-18 — **Slice 6: `Embed.toml` and `launch.json` import — the workbench reads the config you already keep.**
+  Anyone who has been flashing a board from a terminal or VS Code has the chip, probe and
+  protocol written down already; retyping them into a web page is the kind of friction that
+  makes a browser tool feel like a toy. `packages/client/src/config.ts` reads both formats
+  and the workbench gained a **Config…** button that prefills the connection fields, saves
+  them like any other change, and says which settings it applied.
+  - Both real schemas, not invented ones: cargo-embed's tables are **profile-prefixed**
+    (`[default.general]`, `[release.probe]`), so the reader takes a profile and falls back to
+    bare `[general]` for hand-written files; probe-rs's DAP `SessionConfig` is **camelCase**
+    (`wireProtocol`, `coreConfigs[].programBinary`), and a whole VS Code `launch.json` is
+    accepted, picking the probe-rs entry out of the `configurations` array. `[remote] host` in
+    an `Embed.toml` maps onto the WebSocket transport, adding `ws://` only when no scheme is
+    given.
+  - The design rule is **read what we understand and report what was applied**. Both formats
+    carry a great deal this project cannot act on — flash-layout SVG paths, log levels, RTT
+    channel formats — so unknown keys are ignored and a nonsensical value is skipped rather
+    than throwing. The worst case is that less is prefilled, which the caller sees in
+    `applied`. Paths to an ELF or SVD are *reported*, not opened: a browser cannot read a
+    path, so the console says "names a ELF at … — pick it with the ELF… button".
+  - **No new dependency.** The SDK has no runtime dependencies and this did not add one: a
+    ~40-line reader takes `[table]` headers and scalar `key = value` pairs, which is all the
+    keys we read need. It is documented as a subset rather than a TOML implementation, and it
+    skips arrays, inline tables and floats. It does handle the case that would silently
+    corrupt a value — a `#` inside a quoted string is not a comment — and there is a test for
+    exactly that.
+  - vitest 47/47 (9 new, against fixtures in both real schemas), **Playwright 30/30** (2 new
+    workbench specs: an `Embed.toml` prefills and survives a reload; a `launch.json` reports
+    the files it names). tsc and fmt clean. No hardware needed for this slice — it is parsing
+    and form filling, and the attach path it feeds was exercised in slices 4 and 5.
+
+- 2026-09-18 — **Slice 7: embedded-test runner — `TESTS_RESULT=PASS` on the MCXA153, over both transports.**
+  The worker now serves `tests/list`, `tests/run` and `tests/kickoff`, so the unsupported-
+  endpoint count over WebUSB drops from 8 to 5. A real suite runs end to end in the browser:
+  **5 tests found in 971 ms, 4 passed, 1 ignored, 0 failed**, including the two cases that
+  actually exercise the reporting — a test that is *expected* to panic (reported as a pass)
+  and an `#[ignore]` one (never run). The identical run over WebSocket against native
+  `probe-rs serve` gives the same 5/4/1, which is the cross-check that the worker's
+  implementation agrees with master's.
+  - The protocol is small and semihosting-shaped: the firmware calls `SYS_GET_CMDLINE` and
+    waits to be told what to do. Answer `"list"` and it replies with a JSON test list through
+    vendor operation `0x100`; answer `"run <name>"` and it runs that one test and exits.
+    probe-rs builds this on a `RunLoop` the worker does not have, so `tests.rs` is the
+    worker's own loop written to the same protocol rather than lifted — it reuses the
+    existing `ConsoleSemihosting` for ordinary output and enables the hard-fault vector catch,
+    so a test that faults instead of panicking halts and is reported rather than running away.
+  - New firmware `hardware-tests/firmware/cm33-tests`, built for both Cortex-M33 boards.
+    The outcomes are mixed **on purpose**: a runner that only ever sees passing tests proves
+    very little, so the suite has passing tests, one `#[should_panic]`, and one `#[ignore]`.
+  - Two setup traps, both silent until the linker spoke up: `embedded-test` ships its own
+    linker script and the build fails with a deliberate "linker file was not added" error
+    until `cargo::rustc-link-arg-tests=-Tembedded-test.x` is in `build.rs`; and because the
+    harness supplies `main`, nothing in the crate mentions `cortex-m-rt` by name, so its rlib
+    is not linked at all — the tell is `symbol not found: DefaultHandler_` from cortex-m-rt's
+    own linker script, fixed with `use cortex_m_rt as _;`.
+  - `<probe-test-runner>` takes a **`session`**, not a `debugger`: running a suite is not a
+    debug activity and the panel is useful without one. It lists, runs sequentially, shows
+    per-test duration and the failure reason, and degrades to a plain sentence when the
+    server has no test endpoints.
+  - CI cannot run this against the fake probe — a mocked core cannot execute firmware — so
+    the component spec drives it through a stubbed session and asserts the part that is ours:
+    that an ignored test is never run, an expected panic counts as a pass, and a failure
+    keeps its reason. The fake-worker suite additionally asserts the three endpoints are
+    advertised.
+  - `cargo test -p probe-web-targets` 11/11, **Playwright 32/32** (2 new), vitest 47/47, tsc,
+    fmt and wasm32 clippy clean. Worker wasm 12.62 → 12.71 MB (+90 KB, serde_json for the
+    test list).
+
+- 2026-09-18 — **Slice 8: RTT plotting — `PLOT_RESULT=PASS (5/5)` on the MCXA153, a live triangle wave.**
+  `cargo-embed` has had this for years as `probe-rs trace` writing pairs to stdout for an
+  external `plot.py`; in a browser there is no reason to leave the page. `<probe-rtt-plot>`
+  draws a rolling trace of a `BinaryLE` channel on a canvas — no charting dependency, for
+  the same reason `<probe-memory-view>` renders its own hex: a rolling line plot is about a
+  hundred lines against a library every visitor would download.
+  - The blocker the plan identified was real: `Debugger` stringified `bytes` frames to hex
+    before emitting them, so the values were gone before anything could use them. Raw frames
+    now go out as their own **`rtt-bytes`** event and the hex line is kept for the console.
+  - **A second blocker the plan did not foresee, and only hardware found: `enableRtt` never
+    passed channel configuration**, so every channel defaulted to `String` and channel 1's
+    samples arrived decoded as text — the first hardware run reported `0 sample(s) from 0
+    byte frame(s)`. `enableRtt` now takes `channels`, so a caller can declare which channel
+    carries data.
+  - `SampleDecoder` handles the part that actually breaks: an RTT read does not respect
+    sample boundaries, so a poll can return three and a half `u32`s. Mis-handling the tail
+    shifts every later sample and looks like a hardware fault rather than a decoding bug, so
+    it keeps the partial sample between reads. u8/i8/u16/i16/u32/i32/f32, little-endian.
+  - `hardware-tests/firmware/cm33-debug` gained a second, binary RTT channel emitting a
+    **triangle wave**. The first version had period 80 and the check only ever saw the
+    rising edge `1..8` — which a plain counter would produce too, so it proved nothing about
+    framing. Shortened to period 16 so the turn is reached: the run now captures
+    `1,2,3,4,5,6,7,8,7,6,5,4,3,2`, and the check asserts the wave *turns*, not just that it
+    moves.
+  - vitest 53/53 (6 new on the decoder), **Playwright 34/34** (2 new on the component:
+    framing across split reads, the rolling window, channel filtering, and that changing
+    format does not mix widths), tsc and fmt clean.
+
+- 2026-09-18 — **Slice 9 (in progress): MCXA153 column green, and a regression the firmware change caused.**
+  Every Phase 4 debug path re-verified on the FRDM-MCXA153 after the Phase 5 changes to
+  attach, RTT and the worker registry: Node `debug.ts` **42 checks, `DEBUG_RESULT=PASS`**
+  over WebSocket, Node `dap.ts` **`DAP_RESULT=PASS`**, components page
+  **`DEBUGUI_RESULT=PASS`** over WebUSB, workbench **12/12** over WebUSB.
+  - **`dap.ts` failed first, and the cause was slice 8's firmware change.** Adding a second,
+    binary RTT channel to `cm33-debug` broke a check that parses `n=… result=…` lines: any
+    consumer that has not declared channel 1 as `BinaryLE` gets its bytes decoded as *text*
+    into the same console stream, where they interleave with a partial line and corrupt it.
+    Two fixes, both worth having on their own: `Debugger` no longer renders binary frames as
+    hex into the text stream (they were noise, and they were what corrupted the line — the
+    bytes go out as `rtt-bytes` only), and `packages/dap` gained an `rttChannels` launch
+    argument so a launch config can say which channel carries data, as probe-rs's own
+    `launch.json` does.
+  - Worth stating plainly: this is the kind of break only a hardware regression run finds.
+    Every browser test stayed green throughout, because none of them have a target writing
+    to two channels at once.
+
+- 2026-09-18 — **Slice 9: Thingy:91 (nRF9160, J-Link) column green — a second vendor's pack, a second probe driver.**
+  - **Flashed from Nordic's own `nRF_DeviceFamilyPack` 8.44.1** (2.2 MB): converted in the
+    browser to `nRF91 Series` / `nRF9160_xxAA`, `chips/load`ed, attached in 175 ms, flashed
+    and verified in 1665 ms, and read back out of band —
+    `probe-rs read --chip nRF9160_xxAA b8 0xF0000 32` returns `PROBEWEB-FIXED-BIN---000000`.
+    The value of the second board is that it is a *different vendor's pack* through the same
+    code and a *different probe driver* (J-Link, not CMSIS-DAP).
+  - embedded-test **`TESTS_RESULT=PASS`**, 5 found in 1041 ms, 4 passed, 1 ignored.
+  - Coredump opens in native probe-rs: **53 registers**, 248 KiB of RAM. Worth more than a
+    repeat of the MCXA153 run — this core has an FPU (`fpu=true`,
+    `floating_point_register_count=32`) where the MCXA153 does not, so it is the first time
+    the floating-point registers have gone through the encoder.
+  - RTT plot **`PLOT_RESULT=PASS (5/5)`**: `1,2,3,4,5,6,7,8,7,6,5,4,3,2,1,0` — a full
+    triangle, 16 samples in only 3 byte frames, so the split-read path is exercised with
+    quite different framing from the MCXA153's 7 frames.
+  - Phase 4 regressions all green on this board: components page **`DEBUGUI_RESULT=PASS`**,
+    workbench **12/12**, and semihosting **`SEMI_RESULT=PASS (2/2)`** — the last of those
+    matters because slice 7 reuses `ConsoleSemihosting` inside the test runner, and this is
+    what shows the monitor path still behaves.
+
+## Phase 5 close-out
+
+Every slice done. probe-web can now ingest a vendor's own chip description, run a firmware
+test suite, take a coredump the usual tools open, read the config files a probe-rs user
+already keeps, and plot a binary RTT channel — all in a browser, over either transport.
+
+| Check | MCXA153 (CMSIS-DAP) | nRF9160 (J-Link) | ESP32-S3 | No hardware |
+|---|---|---|---|---|
+| `.FLM` → YAML | — | — | — | 252 vendor algorithms convert and validate |
+| `.pack` → YAML | ✓ NXP MCXA153_DFP | ✓ Nordic nRF_DFP | n/a (no CMSIS pack) | Renesas RA DFP, 40 families; committed fixture |
+| Flash from a pack-generated YAML | ✓ + byte-exact readback | ✓ + byte-exact readback | n/a | — |
+| Same YAML loads over WebSocket (0.28 vs 0.32 schema) | ✓ | — | — | — |
+| Import in the target picker | ✓ | — | — | Playwright |
+| Coredump reopened by native probe-rs | ✓ 20 regs, 36 KiB | ✓ 53 regs (FPU), 248 KiB | — | shape assertion on the fake probe |
+| `Embed.toml` / `launch.json` import | — | — | — | vitest + 2 workbench specs |
+| embedded-test list/run | ✓ WebUSB **and** WebSocket | ✓ WebUSB | — | component spec on a stubbed session |
+| RTT BinaryLE plot | ✓ 5/5 | ✓ 5/5 | — | decoder + component specs |
+| Phase 4 regressions (components, workbench, DAP, Node debug) | ✓ 42 checks, 12/12, PASS | ✓ 12/12, semihosting 2/2 | not run | vitest 53, Playwright 34 |
+
+**Not run: the ESP32-S3 column**, by the user's decision on 2026-09-18 — only the Thingy:91
+was swapped in. It is the weakest column on merit as well: Xtensa has no CMSIS pack, so pack
+import does not apply, and no embedded-test firmware is built for it. What it would add is a
+third architecture for the coredump encoder and the plot.
+
+**Worth knowing.** Two bugs in this phase were only findable on hardware, and both had every
+browser test green while broken: `chips/load` never affected attach (slice 4), and
+`enableRtt` never passed channel configuration (slice 8). A third — a binary RTT channel
+corrupting the text stream — was found by the regression run, not by the slice that caused
+it. The lesson the log keeps repeating is the one from Phase 4's git-dependency trap: when
+the browser and the native tools disagree, or when a check passes on data it never saw,
+suspect the setup before the code.
+
+**Deliberately not done.** No workbench panel for the test runner or the plot: both
+components exist and are driven end to end, but wiring them into dockview needs the panel
+factory to pass a `session` as well as a `debugger`, which is a change to the workbench's
+wiring rather than to this phase's features. The cmsis-pack fork
+(`beriberikix/cmsis-pack-manager`, branch `wasm/optional-network`) is pushed but not offered
+upstream, consistent with the standing "not yet" on PRs; the change is written to be
+upstreamable to pyocd as-is.
+
+- 2026-09-18 — **Follow-up: the test runner and the RTT plot are workbench panels now.**
+  The Phase 5 close-out listed this as deliberately deferred; it is done. Both appear as tabs
+  in the console group and were verified on hardware (Thingy:91, J-Link): the **Tests** panel
+  lists and runs the suite — `{total: 5, passed: 4, failed: 0, ignored: 1}` — and the
+  **Plot** panel drew `1,2,3,4,5,6` live while debugging. The existing workbench auto-check
+  is unchanged at **12/12**.
+  - **Panels now declare what drives them.** `COMPONENTS` entries carry `needs: 'session'`,
+    and `useDebugger` no longer assigns `.debugger` to everything — it used to loop over every
+    element blindly, so a session-driven panel would have been handed an inert property and
+    looked broken for no visible reason. `useSession` is the counterpart.
+  - Two pieces of data the panels need were being thrown away or never asked for:
+    `session.flash()` **returns the `BootInfo`** and the workbench discarded it at both flash
+    sites (so the runner can start a suite without re-flashing), and `enableRtt` was called
+    with no channel configuration, so nothing was ever decoded as `BinaryLE`. The plot panel's
+    own channel input is the source of truth, remembered across reloads and applied when a run
+    starts — the panel says as much, because RTT is configured once.
+  - Tabs go **`within` the console group** rather than in a row of their own: a new group
+    takes height from the source view, and the 900×560 layout-sizing test holds it to a third
+    of the dock. `LAYOUT_KEY` is bumped to `…v2` so a saved layout does not hide the new
+    panels; tightening `restoreLayout`'s guard instead would have re-added panels a user had
+    deliberately closed, and would have broken the existing save/restore test.
+  - **Three things only running it revealed.** The panel factory read `session` while dockview
+    restored the layout — before the `let` further down — so every workbench test failed with
+    `Cannot access 'session' before initialization`; the declaration now sits with the panels
+    that use it. The first plot run collected 2 samples instead of 6 because breakpoints from
+    the earlier checks were still set and `continue` re-halted immediately — and clearing them
+    by the *requested* path was not enough, since the gutter sets them by the absolute DWARF
+    path. And `?tests=1` cannot ride on the standard auto-check flow at all: an embedded-test
+    binary has no `step_b`, no `TABLE`, so it is a mode of its own rather than an extra check.
+  - Playwright **38/38** (4 new), vitest 53/53, tsc and fmt clean.
