@@ -40,3 +40,10 @@ web-time = { workspace = true }
 tracing = { workspace = true }
 tracing-wasm = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
+
+[dev-dependencies]
+# For the check-coredump example: shows the file's real structure when probe-rs refuses
+# it, which is the difference between "it broke" and knowing which field is wrong.
+rmpv = "1"
+# To report the serde error by name; probe-rs's wrapper hides it.
+rmp-serde = "1"

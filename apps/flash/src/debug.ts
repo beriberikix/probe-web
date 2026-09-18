@@ -65,6 +65,14 @@ if (qs.get('webusb-fake') === 'core') {
       await attempt('core/clear_hw_bps on an address without a breakpoint succeeds', () => core.clearHwBreakpoints(new BigUint64Array([0x2000n])), () => true);
       await attempt('stack_trace/rich without debug info is an error, not a crash', () => raw.richStackTrace(0, 10).then(() => 'resolved', (e) => `error: ${(e as Error).message}`), (r) => String(r).startsWith('error: no debug info'));
       await attempt('core/dump returns registers and the requested memory', () => core.dumpCore([[0x20000000n, 0x20000010n]]) as Promise<{ registers: unknown[]; data: [unknown, number[]][] }>, (r) => r.registers.length > 10 && r.data.length === 1 && r.data[0][1].length === 16);
+      // The coredump *file*: a MessagePack map whose keys are probe-rs's field names. If
+      // those drift, a dump taken here stops opening in probe-rs, and only the shape of
+      // the bytes can catch that without hardware (`cargo run -p probe-web-local
+      // --example check-coredump` is the full check).
+      await attempt('core/dump encodes a probe-rs coredump file', () => core.dumpCoreFile([[0x20000000n, 0x20000010n]]) as Promise<Uint8Array>, (bytes) => {
+        const text = new TextDecoder('latin1').decode(bytes);
+        return bytes.length > 64 && bytes[0] === 0x87 && ['registers', 'data', 'instruction_set', 'supports_native_64bit_access', 'core_type', 'floating_point_register_count', 'fpu_support'].every((k) => text.includes(k));
+      });
       check('worker does not advertise core/disassemble', !session.supports('core/disassemble'), session.supports('core/disassemble'));
       await attempt('cores/resume reports the core running', () => raw.resumeCores(null) as Promise<{ statuses: [number, unknown][] }>, (r) => r.statuses.length === 1 && JSON.stringify(r.statuses[0][1]).includes('Running'));
       await attempt('cores/status still answers afterwards', () => raw.coresStatus(null) as Promise<{ statuses: unknown[] }>, (r) => r.statuses.length === 1);

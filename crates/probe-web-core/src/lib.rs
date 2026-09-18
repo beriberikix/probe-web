@@ -6,6 +6,7 @@
 //! (`probe-web-local`). Values cross the boundary under the contract in
 //! `js.rs`; the TypeScript types are generated from the RPC schema.
 
+mod coredump;
 mod js;
 mod rtt;
 mod transport;
@@ -874,6 +875,15 @@ impl ProbeWebCore {
         let ranges: Vec<(u64, u64)> = from_js(ranges)?;
         let ranges = ranges.into_iter().map(|(start, end)| start..end).collect();
         to_js(&self.core.dump_core(ranges).await.map_err(client_err)?)
+    }
+    /// The same dump as a coredump *file*, in the MessagePack encoding native `probe-rs`
+    /// reads, so a snapshot taken in a browser can be opened by the usual tools.
+    #[wasm_bindgen(js_name = dumpCoreFile)]
+    pub async fn dump_core_file(&self, ranges: JsValue) -> Result<Vec<u8>, JsValue> {
+        let ranges: Vec<(u64, u64)> = from_js(ranges)?;
+        let ranges = ranges.into_iter().map(|(start, end)| start..end).collect();
+        let dump = self.core.dump_core(ranges).await.map_err(client_err)?;
+        crate::coredump::encode(dump).map_err(|e| crate::js::error("coredump", e))
     }
     /// Service a semihosting request the core is halted on (console/file writes); the server
     /// resumes the core when it handled the call. Returns `{status, events}`.

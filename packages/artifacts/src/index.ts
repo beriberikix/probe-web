@@ -299,3 +299,28 @@ export async function restoreHandles(store: HandleStore, entries: RestoreEntry<a
   }
   return result;
 }
+
+/**
+ * Hand the user a file.
+ *
+ * This package has been read-only until now — opening firmware and watching it change —
+ * but a coredump or an exported memory region has to travel the other way. There is no
+ * `showSaveFilePicker` here on purpose: it is Chromium-only and needs a user gesture,
+ * whereas an object URL works wherever the rest of this does, including inside the
+ * sandboxed frame the tests run in.
+ *
+ * The URL is revoked on the next task rather than immediately, because revoking it in the
+ * same tick can cancel the download in some browsers.
+ */
+export function downloadBytes(name: string, bytes: Uint8Array | ArrayBuffer, type = 'application/octet-stream'): void {
+  const blob = new Blob([bytes as BlobPart], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
