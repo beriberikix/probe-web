@@ -168,7 +168,7 @@ test.describe('workbench layout sizing', () => {
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.goto('/workbench/?fake=1&fresh=1');
     await page.waitForTimeout(600);
-    const good = await page.evaluate(() => localStorage.getItem('probe-web.workbench.layout.v1'));
+    const good = await page.evaluate(() => localStorage.getItem('probe-web.workbench.layout.v2'));
     expect(JSON.parse(good!).grid.height).toBeGreaterThan(200);
 
     // Tiny saved layout (as written from a background tab before this fix).
@@ -176,13 +176,13 @@ test.describe('workbench layout sizing', () => {
       const j = JSON.parse(json);
       j.grid.width = 100;
       j.grid.height = 100;
-      localStorage.setItem('probe-web.workbench.layout.v1', JSON.stringify(j));
+      localStorage.setItem('probe-web.workbench.layout.v2', JSON.stringify(j));
     }, good!);
     await page.goto('/workbench/?fake=1');
     await expect.poll(async () => (await sizes(page)).source.height).toBeGreaterThan(250);
 
     // A good saved layout restores and is laid out to the current (smaller) window.
-    await page.evaluate((json) => localStorage.setItem('probe-web.workbench.layout.v1', json), good!);
+    await page.evaluate((json) => localStorage.setItem('probe-web.workbench.layout.v2', json), good!);
     await page.setViewportSize({ width: 1100, height: 700 });
     await page.goto('/workbench/?fake=1');
     await expect.poll(async () => { const s = await sizes(page); return Math.round(s.console.bottom); }).toBeGreaterThan(560);
@@ -238,5 +238,75 @@ test.describe('config import', () => {
     const lines = () => page.evaluate(() => (window as unknown as Wb).workbench.consoleView.lines.join('\n'));
     await expect.poll(lines).toContain('names a ELF at target/debug/app');
     await expect.poll(lines).toContain('names a SVD at nrf9160.svd');
+  });
+});
+
+test.describe('workbench panels for tests and the plot', () => {
+  test('both appear as tabs in the console group without taking space from the source view', async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto('/workbench/?fake=1&fresh=1');
+    await expect(page.locator('.dv-tab', { hasText: 'Tests' })).toHaveCount(1);
+    await expect(page.locator('.dv-tab', { hasText: 'Plot' })).toHaveCount(1);
+
+    // They share the console group, which is what keeps the layout unchanged.
+    const sameGroup = await page.evaluate(() => {
+      const d = (window as unknown as { dock: { getPanel(id: string): { group: unknown } | undefined } }).dock;
+      return d.getPanel('tests')!.group === d.getPanel('console')!.group
+        && d.getPanel('plot')!.group === d.getPanel('console')!.group;
+    });
+    expect(sameGroup).toBe(true);
+  });
+
+  test('the tests panel is session-driven, so it says what is missing rather than looking broken', async ({ page }) => {
+    await page.goto('/workbench/?fake=1&fresh=1');
+    // `?fake=1` uses a scripted debugger and never opens a session, which is exactly the
+    // case a session-driven panel has to survive.
+    await page.locator('.dv-tab', { hasText: 'Tests' }).click();
+    await page.locator('probe-test-runner').waitFor();
+    await expect(page.locator('probe-test-runner')).toContainText('no session');
+  });
+
+  test('the plot panel is debugger-driven and plots bytes it is given', async ({ page }) => {
+    await page.goto('/workbench/?fake=1&fresh=1');
+    await page.locator('.dv-tab', { hasText: 'Plot' }).click();
+    // dockview builds a panel only once its tab is active.
+    await page.locator('probe-rtt-plot').waitFor();
+
+    const samples = await page.evaluate(async () => {
+      const el = document.querySelector('probe-rtt-plot') as HTMLElement & {
+        updateComplete: Promise<unknown>; channel: number; samples: readonly number[];
+        push(c: number, b: Uint8Array): void;
+      };
+      await el.updateComplete;
+      el.push(el.channel, new Uint8Array([1, 0, 0, 0, 2, 0, 0, 0]));
+      return [...el.samples];
+    });
+    expect(samples).toEqual([1, 2]);
+  });
+
+  test('choosing a different plot channel is remembered for the next launch', async ({ page }) => {
+    await page.goto('/workbench/?fake=1&fresh=1');
+    await page.locator('.dv-tab', { hasText: 'Plot' }).click();
+    await page.locator('probe-rtt-plot').waitFor();
+
+    await page.evaluate(async () => {
+      const el = document.querySelector('probe-rtt-plot') as HTMLElement & { updateComplete: Promise<unknown> };
+      await el.updateComplete;
+      const input = el.shadowRoot!.querySelector('input[type=number]') as HTMLInputElement;
+      input.value = '3';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    // RTT is configured when a run starts, so the choice has to outlive the page.
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('probe-web.workbench.plot-channel'))).toBe('3');
+    await page.reload();
+    await page.locator('.dv-tab', { hasText: 'Plot' }).click();
+    await page.locator('probe-rtt-plot').waitFor();
+    const channel = await page.evaluate(async () => {
+      const el = document.querySelector('probe-rtt-plot') as HTMLElement & { updateComplete: Promise<unknown>; channel: number };
+      await el.updateComplete;
+      return el.channel;
+    });
+    expect(channel).toBe(3);
   });
 });
