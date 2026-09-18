@@ -1,7 +1,8 @@
 //! The dispatch table and handlers.
 
 use std::{
-    collections::HashMap, convert::Infallible, future::Future, io::Cursor, rc::Rc, time::Duration,
+    collections::HashMap, convert::Infallible, future::Future, io::Cursor, rc::Rc, sync::Arc,
+    time::Duration,
 };
 
 use postcard_rpc::{
@@ -115,7 +116,14 @@ struct RttCfg {
 }
 
 pub struct Inner {
-    registry: Registry,
+    /// Shared with attach, because `Probe::attach` resolves a chip name against the
+    /// registry it is handed -- and its no-registry form builds a fresh one from the
+    /// built-in families, so anything `chips/load` added would be invisible. `Registry`
+    /// is not `Clone`, so adding a family rebuilds from the built-ins plus `family_yamls`.
+    registry: Arc<Registry>,
+    /// Every chip-family document loaded at runtime, in order, so the registry can be
+    /// rebuilt when another arrives.
+    family_yamls: Vec<String>,
     pub(crate) sessions: HashMap<u64, probe_rs::Session>,
     loaders: HashMap<u64, FlashLoader>,
     pub(crate) files: HashMap<String, Vec<u8>>,
@@ -139,7 +147,8 @@ impl Ctx {
     pub fn new() -> Self {
         Self {
             inner: Rc::new(Mutex::new(Inner {
-                registry: Registry::from_builtin_families(),
+                registry: Arc::new(Registry::from_builtin_families()),
+                family_yamls: Vec::new(),
                 sessions: HashMap::new(),
                 loaders: HashMap::new(),
                 files: HashMap::new(),
@@ -258,7 +267,13 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
                 });
             }
         };
-        return match probe.attach(selector, Permissions::default()).await {
+        // Same registry as the real path, so a chip imported with `chips/load` can be
+        // attached to on the fake probe too -- which is what lets CI cover pack import.
+        let registry = ctx.inner.lock().await.registry.clone();
+        return match probe
+            .attach_with_registry(selector, Permissions::default(), registry)
+            .await
+        {
             Ok(session) => {
                 let key = probe_rs_rpc::Key::<Session>::new();
                 ctx.inner.lock().await.sessions.insert(key.id(), session);
@@ -270,6 +285,9 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
             }),
         };
     }
+    // Taken before the attach loop: `Probe::attach` would otherwise build its own
+    // registry from the built-in families and never see anything `chips/load` added.
+    let registry = ctx.inner.lock().await.registry.clone();
     let probes = Lister::new().list_all().await;
     let Some(info) = probes.iter().find(|p| {
         p.vendor_id == req.probe.vendor_id
@@ -313,10 +331,12 @@ async fn attach(ctx: &mut Ctx, _h: VarHeader, req: AttachRequest) -> AttachRespo
         }
         let attach = if req.connect_under_reset {
             probe
-                .attach_under_reset(selector.clone(), permissions)
+                .attach_under_reset_with_registry(selector.clone(), permissions, registry.clone())
                 .await
         } else {
-            probe.attach(selector.clone(), permissions).await
+            probe
+                .attach_with_registry(selector.clone(), permissions, registry.clone())
+                .await
         };
         match attach {
             Ok(s) => break s,
@@ -399,12 +419,15 @@ async fn chip_info(ctx: &mut Ctx, _h: VarHeader, req: ChipInfoRequest) -> ChipIn
 }
 
 async fn load_chip_family(ctx: &mut Ctx, _h: VarHeader, req: LoadChipFamilyRequest) -> NoResponse {
-    ctx.inner
-        .lock()
-        .await
-        .registry
-        .add_target_family_from_yaml(&req.families_yaml)
-        .map_err(err)?;
+    let mut inner = ctx.inner.lock().await;
+    // Build the replacement first, so a document that does not validate leaves the
+    // registry exactly as it was rather than half-updated.
+    let mut next = Registry::from_builtin_families();
+    for yaml in inner.family_yamls.iter().chain([&req.families_yaml]) {
+        next.add_target_family_from_yaml(yaml).map_err(err)?;
+    }
+    inner.family_yamls.push(req.families_yaml);
+    inner.registry = Arc::new(next);
     Ok(())
 }
 
