@@ -11,6 +11,8 @@ interface Row {
 
 /**
  * `<probe-test-runner>`: list and run an `embedded-test` suite on the attached target.
+ * Needs a server that provides the `tests/*` endpoints and a
+ * {@link ProbeTestRunner.bootInfo} from flashing the test firmware.
  *
  * Takes a `session` rather than a `debugger`, because the tests endpoints belong to the
  * session — running a suite is not a debug activity, and the panel is useful without one.
@@ -19,9 +21,14 @@ interface Row {
  * `embedded-test` works and it is the reason a failure is attributable to one test rather
  * than to whatever ran before it; the cost is a reset per test, which is why the run is
  * sequential and shows progress as it goes.
+ *
+ * @fires tests-finished - {@link ProbeTestRunner.runAll} finished, including when it
+ *   stopped early on an error. `detail` is {@link ProbeTestRunner.summary}:
+ *   `{ total, passed, failed, ignored }`.
  */
 @customElement('probe-test-runner')
 export class ProbeTestRunner extends LitElement {
+  /** @internal */
   static styles = css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
@@ -36,6 +43,7 @@ export class ProbeTestRunner extends LitElement {
     output { display: block; margin-top: 6px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; max-height: 140px; overflow: auto; color: #444; }
   `;
 
+  /** The attached session whose `tests/*` endpoints run the suite. */
   @property({ attribute: false }) session: Session | null = null;
   /** How to get the firmware running, as `monitor` takes it. Set after flashing. */
   @property({ attribute: false }) bootInfo: Wire.BootInfo | null = null;
@@ -44,7 +52,11 @@ export class ProbeTestRunner extends LitElement {
   @state() private error: string | null = null;
   @state() private output = '';
 
-  /** Overridable so a test or an automated check can watch the console traffic. */
+  /**
+   * Called for every monitor event while listing or running; collects semihosting and RTT
+   * text into the output shown under the table. Overridable so a test or an automated
+   * check can watch the console traffic.
+   */
   onEvent(e: MonitorEvent) {
     if (e.kind === 'semihosting' || e.kind === 'text') {
       this.output = (this.output + ('data' in e ? e.data : '')).slice(-4000);
@@ -55,7 +67,7 @@ export class ProbeTestRunner extends LitElement {
     return this.session?.supports('tests/list') ?? false;
   }
 
-  /** Ask the firmware what tests it has. */
+  /** Ask the firmware what tests it has (boots it with {@link ProbeTestRunner.bootInfo}) and reset the results table. */
   async list() {
     if (!this.session || !this.bootInfo) return;
     this.busy = true;
@@ -112,7 +124,7 @@ export class ProbeTestRunner extends LitElement {
     }
   }
 
-  /** Counts, for the caller and for an automated check. */
+  /** Result counts for the current table, for the caller and for an automated check. */
   get summary() {
     const count = (s: Row['state']) => this.rows.filter((r) => r.state === s).length;
     return { total: this.rows.length, passed: count('pass'), failed: count('fail'), ignored: count('ignored') };

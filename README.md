@@ -3,90 +3,113 @@
 Flash and debug embedded targets from a browser tab, on top of
 [probe-rs](https://probe.rs).
 
+**[Documentation](https://beriberikix.github.io/probe-web/)** ·
+**[Flasher](https://beriberikix.github.io/probe-web/flash/)** ·
+**[Workbench](https://beriberikix.github.io/probe-web/workbench/)** ·
+**[API reference](https://beriberikix.github.io/probe-web/api/)**
+
 One client API, two transports:
 
-- **WebUSB** — probe-rs itself, compiled to wasm and running in a Web Worker,
-  talking to the probe over WebUSB. No server, no install: a web page and a
-  USB debug probe.
-- **WebSocket** — the same API against a native `probe-rs serve`, for browsers
-  without WebUSB (Firefox, Safari) or a probe on another machine.
+- **WebUSB**: probe-rs itself, compiled to WebAssembly and running in a Web Worker, talks to
+  the probe over WebUSB. You need a web page and a USB debug probe; nothing to install, no server.
+- **WebSocket**: the same API against a native `probe-rs serve`, for browsers without
+  WebUSB (Firefox, Safari), a probe on another machine, or Node.
 
-Everything above the transport is the same either way: flashing with progress,
-RTT and defmt, semihosting, memory, and a full debugger — breakpoints,
-stepping, call stack, variables, registers, SVD peripherals.
+Everything above the transport works the same either way:
+- flashing with progress and verify;
+- RTT with defmt decoded in the browser;
+- semihosting and memory access;
+- embedded-test suites;
+- CMSIS-Pack import;
+- a full debugger: breakpoints, stepping, call stack, variables, registers and SVD peripherals.
+
+## Try it
+
+Open the [flasher](https://beriberikix.github.io/probe-web/flash/) in Chrome or Edge with a
+debug probe attached. Pick a demo image (the site ships firmware for the FRDM-MCXA153 and
+the Thingy:91), select your probe and flash. Then open the
+[workbench](https://beriberikix.github.io/probe-web/workbench/) to set a breakpoint.
+
+## Use the SDK
+
+```ts
+import { Client } from '@probe-web/client';
+import { requestProbe } from '@probe-web/devices';
+
+await requestProbe();                                    // in a click handler
+const client = await Client.connect({ kind: 'webusb' }); // or { kind: 'websocket', url, token }
+const [probe] = await client.listProbes();
+const session = await client.attach({ probe, chip: 'MCXA153', protocol: 'Swd' });
+
+const boot = await session.flash({ image: elfBytes, format: 'elf' });
+await session.monitor(boot, (event) => console.log(event)); // RTT, defmt, semihosting
+```
+
+Or drop in the components:
+
+```html
+<probe-device-picker></probe-device-picker>
+<probe-flash-panel></probe-flash-panel>
+<probe-rtt-terminal></probe-rtt-terminal>
+```
+
+The [guide](https://beriberikix.github.io/probe-web/guide/getting-started) covers each part.
+The packages are not on npm yet, so use them from a clone of this repository.
 
 ## What is here
 
 | | |
 |---|---|
-| `packages/client` | The SDK: probes, chips, flashing, RTT, memory, and a `Debugger` that owns one core's debug state. Runs in the browser and in Node. |
-| `packages/ui` | Lit components — device picker, flash panel, RTT terminal, RTT plot, core controls, registers, call stack, variables, breakpoints, disassembly, memory view, peripherals, test runner. Each works on its own. |
-| `packages/dap` | A Debug Adapter Protocol adapter over the SDK, for VS Code web, Theia, or a Monaco editor. |
-| `packages/devices`, `packages/artifacts`, `packages/serial` | WebUSB device lifecycle, firmware files (including File System Access with re-flash on rebuild), and a WebSerial monitor. |
-| `crates/probe-web-core` | The RPC client compiled to wasm, plus defmt decoding. |
-| `crates/probe-web-local` | probe-rs in a Worker: the RPC server the WebUSB transport talks to. |
-| `crates/probe-web-targets` | CMSIS-Pack and `.FLM` ingestion: a vendor pack becomes probe-rs target YAML in the browser, so a chip probe-rs does not ship can still be flashed. |
-| `apps/flash` | A single-target flasher page. |
-| `apps/workbench` | Flash and debug in one page: dockable panels, Monaco, xterm. |
-| `apps/inspect` | probe-rs `info` in a page: DP, APs, ROM tables. |
-| `examples/` | A minimal Monaco IDE driven only through DAP, and Node scripts that run the same SDK against hardware in CI. |
+| [`packages/client`](packages/client) | The SDK: probes, chips, flashing, RTT, memory, and a `Debugger` for one core. Runs in the browser and in Node. |
+| [`packages/ui`](packages/ui) | Sixteen Lit web components: device and target pickers, flash panel, RTT terminal and plot, test runner, serial monitor, and the debugger panels. |
+| [`packages/dap`](packages/dap) | A Debug Adapter Protocol adapter over the SDK, for VS Code for the Web, Theia or a Monaco editor. |
+| [`packages/devices`](packages/devices), [`packages/artifacts`](packages/artifacts), [`packages/serial`](packages/serial) | WebUSB probe lifecycle; firmware files with watch-and-reflash; a WebSerial console. |
+| [`crates/probe-web-core`](crates/probe-web-core) | probe-rs's RPC client compiled to wasm, plus defmt decoding. |
+| [`crates/probe-web-local`](crates/probe-web-local) | probe-rs in a Worker: the server the WebUSB transport talks to. |
+| [`crates/probe-web-targets`](crates/probe-web-targets) | CMSIS-Pack and `.FLM` import: a vendor pack becomes probe-rs target YAML in the browser. |
+| [`apps/`](apps) | The flasher, the workbench (dockable debugger with Monaco) and the inspector (`probe-rs info` in a page). |
+| [`examples/`](examples) | A minimal flashing page, a Monaco IDE driven only through DAP, and Node scripts for hardware-in-the-loop CI. |
+| [`hardware-tests/`](hardware-tests) | Test firmware and the checks run against real boards. |
+| [`tools/wire-gen`](tools/wire-gen) | Generates the TypeScript wire types from probe-rs's RPC schema. |
+| [`docs/`](docs) | The documentation site. |
 
 ## Status
 
-Works today, verified on an FRDM-MCXA153 (CMSIS-DAP), an nRF9160 on a
-Thingy:91 (J-Link) and an ESP32-S3 (built-in USB-JTAG). See
-`spikes/README.md` for the per-phase log and the hardware matrix.
+probe-web is verified on an FRDM-MCXA153 (CMSIS-DAP), an nRF9160 on a Thingy:91 (J-Link) and
+an ESP32-S3 (built-in USB-JTAG): flashing, RTT, and debugging, over both transports. See
+[Supported hardware](https://beriberikix.github.io/probe-web/reference/hardware).
 
-Worth knowing before you try it:
+Worth knowing:
 
-- **WebUSB is Chromium-only.** Firefox and Safari can still use the WebSocket
-  transport against `probe-rs serve`.
-- **The WebUSB transport needs the forks.** probe-rs upstream is synchronous
-  and has no wasm support; this builds on a fork with an async port
-  (`beriberikix/probe-rs`, branches `webusb/nusb-0.2.7` and
-  `wasm-rpc-client`), fetched by Cargo. The intent is to repoint at upstream
-  when the async work lands.
-- **No disassembly over WebUSB.** probe-rs disassembles with capstone, a C
-  library; the panel and the DAP adapter report it as unavailable there.
-- **Xtensa stepping has a gap.** On ESP32-S3, step out lands in the entry
-  trampoline and frames past the first caller repeat. Everything else on that
-  chip works.
-- Nothing is published to npm yet; the API still moves.
+- **WebUSB is Chromium-only.** Firefox and Safari can use the WebSocket transport.
+- **It builds on forks of probe-rs.** probe-rs upstream is synchronous and has no wasm
+  support. The WebUSB transport uses an async port (`beriberikix/probe-rs`, branch
+  `webusb/nusb-0.2.7`), and `probe-rs serve` needs the `wasm-rpc-client` branch. Cargo
+  fetches both. The intent is to follow upstream as that work lands.
+- **No disassembly over WebUSB.** probe-rs disassembles with capstone, a C library.
 
-## Try it in the browser
+More in [Browser support and limitations](https://beriberikix.github.io/probe-web/reference/limitations).
 
-https://beriberikix.github.io/probe-web/ runs the flasher, with the inspector at
-`/inspect/`, the workbench at `/workbench/` and the DAP-only IDE example at
-`/monaco-ide/`. Firmware for the FRDM-MCXA153 and the Thingy:91 (nRF9160) is
-built and shipped with the site, so a board and a Chromium browser are enough:
-pick a demo image, select your probe, flash, then open the workbench to set a
-breakpoint. Nothing is installed, and no server is involved.
-
-## Run it locally
+## Build from source
 
 ```sh
+cargo install wasm-bindgen-cli --version 0.2.128   # must match Cargo.lock
 npm install
 ./scripts/build-wasm.sh       # needs the Rust toolchain in rust-toolchain.toml
-./scripts/build-firmware.sh   # optional: the demo images, needs thumbv8m.main-none-eabi
+./scripts/build-firmware.sh   # optional: the demo firmware (needs thumbv8m.main-none-eabi)
 npm run dev -w apps/flash     # http://127.0.0.1:5173
 ```
 
-Open the page in Chrome, pick a probe when asked, choose a chip and a
-firmware file, and flash. The workbench is at `/workbench/`, the inspector at
-`/inspect/`, and the Monaco IDE example at `/monaco-ide/`.
-
-For the WebSocket transport, run `probe-rs serve` from a checkout of the
-`wasm-rpc-client` branch and point the page at it.
-
-## Tests
+The development server serves the flasher at `/`, the workbench at `/workbench/`, the
+inspector at `/inspect/`, and the examples at `/monaco-ide/` and `/minimal-flash/`.
 
 ```sh
-npm test                     # vitest: pure helpers, DAP protocol
-npx playwright test          # browser tests against a fake probe, no hardware
+npm test                 # vitest: SDK, DAP adapter, helpers
+npx playwright test      # every app and component against a fake probe, no hardware
+npm run docs:dev         # the documentation site, with the API reference
 ```
 
-`examples/node-ci` holds hardware-in-the-loop scripts that drive a real probe
-through `probe-rs serve` and exit non-zero on failure.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the pieces fit and how to work on them.
 
 ## License
 

@@ -1,99 +1,134 @@
 # Hardware tests
 
-Manual/automated end-to-end runs against real boards. All results are logged in
-`../spikes/README.md` (Phase 1 log) until a proper harness exists.
+End-to-end checks against real boards, and the firmware they run. The hardware-free suites
+(`npm test`, `npx playwright test`) cover the same code paths against a fake probe; these
+checks are what proves them on silicon. The last verified results are on the docs site's
+[Supported hardware](https://beriberikix.github.io/probe-web/reference/hardware) page.
+
+Boards used: FRDM-MCXA153 (MCU-Link, CMSIS-DAP v2), Thingy:91 nRF9160 (J-Link) and
+ESP32-S3-DevKitC (built-in USB-JTAG).
 
 ## Setup
 
 ```sh
-./scripts/build-wasm.sh                              # wasm crates → packages/client
-(cd spikes/rpc-ws/serve && probe-rs serve)           # remote transport; user `spike`, token `spike`
-(cd apps/flash && npx vite --port 5173)              # the flasher
+./scripts/build-wasm.sh                          # probe-rs → wasm, into packages/client
+./scripts/build-firmware.sh                      # firmware below → apps/flash/public/firmware/
+npm run dev -w apps/flash                        # all apps on http://127.0.0.1:5173
+(cd hardware-tests/serve && probe-rs serve)      # WebSocket transport: 127.0.0.1:3000, token probe-web
 ```
 
-`probe-rs serve` must be built from the `wasm-rpc-client` worktree (it sends
-the auth challenge as a frame and survives clients disconnecting mid-monitor).
-
-## Runs
-
-Manifests: `flash-manifest.json` (MCXA153 pattern), `rtt-manifest.json` (MCXA153 defmt-RTT firmware), `esp-manifest.json` (ESP32-S3, spare region 0x7F0000, esptool readback), `nrf-manifest.json` (nRF9160, 0xF0000), `nrf-rtt-manifest.json` (nRF9160 RTT echo firmware; add `&monitor=6&send=hello` to test the down channel). Add `&manifest=/<name>.json`, `&op=verify|erase|cycle` (default flash), and, with several probes attached, `&probe=<substring>`. Hardware-free: `npm run test:e2e` runs the fake-probe suite under Playwright.
-
-### FRDM-MCXA153, MCU-Link CMSIS-DAP v2
-
-| What | URL |
-|---|---|
-| Flash 4 KiB pattern, WebSocket | `http://127.0.0.1:5173/?auto=1&transport=websocket&token=spike&tag=<unique>` |
-| Flash, WebUSB (grant the device once via *Authorize device…*) | `http://127.0.0.1:5173/?auto=1&transport=webusb&tag=<unique>` |
-| defmt-RTT firmware + 4 s monitor | `…&manifest=/rtt-manifest.json&monitor=4` |
-
-Verify a pattern flash out-of-band after the tab releases the probe:
+The WebUSB checks need only the dev server; grant the probe once with *Authorize device…* on
+any page of that origin. The WebSocket checks need `probe-rs serve` built from the fork (see
+[Transports](https://beriberikix.github.io/probe-web/guide/transports#websocket)):
 
 ```sh
-probe-rs read --chip MCXA153 --protocol swd b8 0x1F000 32   # first 21 bytes = the tag
+cargo install probe-rs-tools --locked --git https://github.com/beriberikix/probe-rs --branch wasm-rpc-client
 ```
 
-Rebuild the test firmware (`firmware/mcxa153-rtt`, defmt-RTT; `firmware/nrf9160-rtt-echo`, rtt-target with a down channel): `cargo build --release` in the firmware directory, then copy the ELF to `apps/flash/public/firmware/<name>.elf` (ELFs are gitignored).
+## Firmware
 
-## Debugging (Phase 3)
+`scripts/build-firmware.sh` builds all Cortex-M images (it adds the `thumbv8m.main-none-eabi`
+target) and copies them, with their sources, into `apps/flash/public/firmware/`. Add
+`--esp32s3` for the Xtensa image.
 
-Debugging needs the WebSocket transport: `probe-rs serve` from the `wasm-rpc-client`
-worktree (`~/code/probers-wasm/prs-wasm-rpc`, `cargo build -p probe-rs-tools --bin probe-rs`),
-started from `spikes/rpc-ws/serve` (token `spike`). The WebUSB worker has no debug endpoints;
-`session.debugger()` refuses with `kind: 'unsupported'` there.
-
-### Debug-target firmware
-
-Both firmwares run the same program, so every check can expect exact values: `main` calls
-`step_a(n)` → `step_b(point, mode)` about twice a second, with locals `point = {n, 2n}` and
-`mode`, statics `COUNTER` (u32, incremented in `step_b`) and `TABLE` (`[u16; 4] = 0x1111…0x4444`),
-and RTT output `n=… result=…`. Release builds use `opt-level = 1` and full DWARF, so lines and
-locals stay meaningful. ELFs are gitignored; copy them into `apps/flash/public/firmware/`.
-
-| Firmware | Boards | Build | Copy to |
-|---|---|---|---|
-| `firmware/cm33-debug` | FRDM-MCXA153, Thingy:91 (nRF9160) | `CARGO_TARGET_DIR=target/mcxa153 cargo build --release --features mcxa153` (or `nrf9160`) | `target/<board>/thumbv8m.main-none-eabi/release/cm33-debug` → `mcxa153-debug.elf` / `nrf9160-debug.elf` |
-| `firmware/esp32s3-debug` | ESP32-S3 (built-in USB-JTAG) | `. ~/export-esp.sh && cargo build --release` | `target/xtensa-esp32s3-none-elf/release/esp32s3-debug` → `esp32s3-debug.elf` |
-
-`cm33-debug` needs the `thumbv8m.main-none-eabi` target (`rustup target add thumbv8m.main-none-eabi`);
-the separate target directories keep the two memory layouts from overwriting each other.
-The sources' line numbers are used by the checks: `src/main.rs:40` (`cm33-debug`) and
-`src/bin/main.rs:39` (`esp32s3-debug`) are the first statement in `step_b`.
-
-**Xtensa toolchain for `esp32s3-debug`:** `cargo install espup && espup install --targets esp32s3`
-installs the `esp` Rust toolchain (the crate's `rust-toolchain.toml` selects it) and writes
-`~/export-esp.sh` (sets `LIBCLANG_PATH` and the Xtensa GCC path; source it in each shell).
-The crate was scaffolded with `esp-generate --chip esp32s3 --headless -o probe-rs -o panic-rtt-target`
-(esp-hal 1.1, esp-bootloader-esp-idf). ESP32 images flash in the IDF format, which the
-tools pick with `format: 'target'`.
-
-A Cortex-M SVD for the Peripherals checks: `svd/cortex-m-scb.svd` (also served at `/svd/cortex-m-scb.svd`).
-
-### Checks
-
-Node scripts (in `examples/node-ci`, run with `node <script>.ts …`; each prints PASS/FAIL per check and exits non-zero on failure):
-
-| Check | MCXA153 (MCU-Link) | nRF9160 (J-Link) | ESP32-S3 (USB-JTAG) |
-|---|---|---|---|
-| `debug.ts` — the SDK `Debugger`: run control, registers, memory, breakpoints, stepping, stack, variables, SVD (41 checks, Cortex-M only) | `--elf ../../apps/flash/public/firmware/mcxa153-debug.elf --chip MCXA153 --probe mcu-link [--svd ../../hardware-tests/svd/cortex-m-scb.svd]` | `--elf …/nrf9160-debug.elf --chip nRF9160_xxAA --probe j-link` | — |
-| `dap.ts` — `@probe-web/dap` through DAP messages only (13 checks, incl. RTT output events) | `--elf …/mcxa153-debug.elf --chip MCXA153 --probe mcu-link` | `--elf …/nrf9160-debug.elf --chip nRF9160_xxAA --probe j-link` | `--elf …/esp32s3-debug.elf --chip esp32s3 --probe jtag --protocol Jtag --srcPath bin/main.rs --firmwareSrc ../../hardware-tests/firmware/esp32s3-debug/src/bin/main.rs --noDisassembly` |
-| `debug-basic.ts` — run control without an ELF (any firmware) | `--chip MCXA153 --probe mcu-link` | `--chip nRF9160_xxAA --probe j-link` | `--chip esp32s3 --protocol Jtag --probe jtag` |
-| `robustness.ts` — serve answers errors (bad core index) and keeps the connection | any | any | `--chip esp32s3 --protocol Jtag --probe jtag` |
-| `semihosting.ts` — firmware `nrf9160-semihosting.elf`: `--mode debugger` (the `Debugger` services semihosting halts while debugging), `--mode monitor [--scan ram\|none]` (monitor with an RTT client scanning all RAM) | — | defaults (`--chip nRF9160_xxAA --probe j-link`) | — |
-| `rtt-scan-pacing.ts` — monitor with an RTT scan region that holds no control block; start serve with `--log-file` and count `control block not found` lines | — | — | `--chip esp32s3 --protocol Jtag --probe jtag --size 0x400 --seconds 8` |
-
-`--url` (default `ws://127.0.0.1:3000`) and `--token` (default `spike`) apply to all. Disassembly is not implemented by `probe-rs serve` for Xtensa, hence `--noDisassembly`.
-
-Browser checks (vite on 5173; open in Chrome, results in the page log / `window.*Result`):
-
-| Page | URL (MCXA153; swap `probe`, `chip`, `elf` for the other boards) | Result marker |
+| Firmware | Boards | What it does |
 |---|---|---|
-| Workbench (nRF9160: `probe=j-link&chip=nRF9160_xxAA&elf=/firmware/nrf9160-debug.elf`) | `/workbench/?fresh=1&auto=1&token=spike&probe=mcu&chip=MCXA153&protocol=Swd&elf=/firmware/mcxa153-debug.elf&bp=40&bp2=43` (the workbench remembers the last protocol, so pass it) | `WORKBENCH_RESULT`, `window.workbenchResult` (11 checks) |
-| Workbench, ESP32-S3 | `/workbench/?fresh=1&auto=1&token=spike&probe=jtag&chip=esp32s3&protocol=Jtag&elf=/firmware/esp32s3-debug.elf&srcPath=bin/main.rs&bp=39&bp2=42` | same |
-| Components page (Cortex-M) | `/debug.html?auto=1&token=spike&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&line=40&table=<TABLE address>&svd=/svd/cortex-m-scb.svd` | `DEBUGUI_RESULT` |
-| Monaco IDE example | `/monaco-ide/?auto=1&token=spike&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf` | `MONACO_IDE_RESULT` |
+| `cm33-debug` | MCXA153, nRF9160 (feature per board) | The debug target: `main` calls `step_a(n)` → `step_b(point, mode)` about twice a second, with locals `point = {n, 2n}` and `mode`, statics `COUNTER` and `TABLE` (`[u16; 4] = 0x1111…0x4444`), text RTT on channel 0 and samples on binary channel 1. `src/main.rs:40` is the first statement in `step_b`. |
+| `esp32s3-debug` | ESP32-S3 | The same program for Xtensa; `src/bin/main.rs:39` is the first statement in `step_b`. |
+| `cm33-tests` | MCXA153, nRF9160 | An `embedded-test` suite with passing, should-panic and ignored tests. |
+| `mcxa153-rtt` | MCXA153 | defmt over RTT. |
+| `nrf9160-rtt-echo` | nRF9160 | A String up channel and a down channel; echoes lines upper-cased. |
+| `nrf9160-semihosting` | nRF9160 | stdout and stderr over semihosting, then `SYS_EXIT` success. |
+| `nrf9160-uart-echo` | nRF9160 | Banner and ticks on UARTE0 (the Thingy:91 board controller's serial port), echoes lines. |
 
-Hardware-free: `npx vitest run` (SDK `Debugger`, DAP adapter, helpers) and `npx playwright test`
-(components, workbench and IDE against `FakeDebugger` from `@probe-web/client/testing`).
+Release builds use `opt-level = 1` and full DWARF, so lines and locals stay meaningful.
 
-Not automated: the workbench's ELF watch (pick the ELF with **ELF…**, rebuild the firmware, the
-workbench re-flashes and restarts debugging) and **Reopen** after a reload need a real file pick.
+**Xtensa toolchain:** `cargo install espup && espup install --targets esp32s3`, then
+`. ~/export-esp.sh` in the shell that runs `build-firmware.sh --esp32s3`. ESP32 images flash
+in the ESP-IDF format, which the tools select with `format: 'target'`.
+
+`svd/cortex-m-scb.svd` is a small Cortex-M SVD for the peripherals checks, also served at
+`/svd/cortex-m-scb.svd`.
+
+## Flash manifests
+
+The flasher loads these from `apps/flash/public/` with `?manifest=<name>`:
+
+| Manifest | Board | Image |
+|---|---|---|
+| `flash-manifest.json` | MCXA153 | 4 KiB test pattern at 0x1F000 (the default) |
+| `rtt-manifest.json` | MCXA153 | `mcxa153-rtt` |
+| `mcxa153-debug-manifest.json`, `mcxa153-tests-manifest.json` | MCXA153 | debug target, test suite |
+| `nrf-manifest.json` | nRF9160 | 4 KiB test pattern at 0xF0000 |
+| `nrf-rtt-manifest.json`, `nrf-semi-manifest.json` | nRF9160 | RTT echo, semihosting |
+| `nrf9160-debug-manifest.json`, `nrf9160-tests-manifest.json` | nRF9160 | debug target, test suite |
+| `esp-manifest.json` | ESP32-S3 | 4 KiB test pattern at 0x7F0000 (a spare region) |
+
+`demos.json` lists the ones the deployed site offers.
+
+## Browser checks
+
+Open the URL in Chrome on `http://127.0.0.1:5173`. Each check logs PASS/FAIL lines and a
+result marker to the page and the console. Add `&transport=webusb` for the in-page
+worker, or `&transport=websocket&token=probe-web` for `probe-rs serve`. With several
+probes attached, `&probe=<substring>` picks one.
+
+### Flasher (`/`)
+
+| Check | URL | Marker |
+|---|---|---|
+| Flash a tagged pattern | `/?auto=1&tag=<unique>` | `FLASH_RESULT` |
+| RTT + defmt, 4 s | `/?auto=1&manifest=rtt-manifest.json&monitor=4` | `RTT_RESULT` |
+| RTT down channel (nRF9160) | `/?auto=1&manifest=nrf-rtt-manifest.json&monitor=6&send=hello` | `RTT_RESULT` |
+| Verify only, or erase all | `/?auto=1&op=verify` or `op=erase` | the page log |
+| Flash → verify → erase → verify → flash → verify | `/?auto=1&op=cycle` | `CYCLE_RESULT` |
+| Run an `embedded-test` suite | `/?auto=1&manifest=mcxa153-tests-manifest.json&op=tests` | `TESTS_RESULT` |
+| Coredump | `/?auto=1&manifest=mcxa153-debug-manifest.json&op=dump` | `DUMP_RESULT` |
+| Scan DP/APs/ROM tables | `/?auto=1&op=info` | `INFO_RESULT` |
+| Serial echo (Thingy:91 UART) | `/?serialtest=<text>` | `SERIAL_RESULT` |
+
+Verify a pattern out of band after the tab releases the probe, e.g. on the MCXA153:
+
+```sh
+probe-rs read --chip MCXA153 --protocol swd b8 0x1F000 32   # the first 21 bytes are the tag
+```
+
+### Debugger
+
+| Page | URL (MCXA153; for the nRF9160 use `probe=j-link&chip=nRF9160_xxAA&elf=/firmware/nrf9160-debug.elf`) | Marker |
+|---|---|---|
+| Workbench | `/workbench/?fresh=1&auto=1&probe=mcu&chip=MCXA153&protocol=Swd&elf=/firmware/mcxa153-debug.elf&bp=40&bp2=43` | `WORKBENCH_RESULT` |
+| Workbench, ESP32-S3 | `/workbench/?fresh=1&auto=1&probe=jtag&chip=esp32s3&protocol=Jtag&elf=/firmware/esp32s3-debug.elf&srcPath=bin/main.rs&bp=39&bp2=42` | `WORKBENCH_RESULT` |
+| Workbench test runner | `…&tests=1` with a `*-tests.elf` | `WORKBENCH_RESULT` |
+| Components | `/debug.html?auto=1&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&line=40&table=<TABLE address>&svd=/svd/cortex-m-scb.svd` | `DEBUGUI_RESULT` |
+| SDK `Debugger` over WebUSB | `/debug.html?check=webusb-src&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&src=/@fs/<repo>/hardware-tests/firmware/cm33-debug/src/main.rs` | `SRC_RESULT` |
+| Worker stack trace (raw calls) | `/debug.html?check=webusb&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf` | `STACK_RESULT`, `VARS_RESULT` |
+| Semihosting while debugging (nRF9160) | `/debug.html?check=webusb-semi&probe=j-link&chip=nRF9160_xxAA&elf=/firmware/nrf9160-semihosting.elf` | `SEMI_RESULT` |
+| Binary RTT channel | `/debug.html?check=plot&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf` | `PLOT_RESULT` |
+| Monaco IDE (DAP) | `/monaco-ide/?auto=1&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf` | `MONACO_IDE_RESULT` |
+
+The workbench remembers the last protocol, so pass `protocol=` explicitly. `fresh=1` starts
+from the default layout.
+
+Not automated: the workbench's ELF watch (pick the ELF with **ELF…**, rebuild, and the
+workbench re-flashes and restarts debugging) and **Reopen** after a reload, which need a real
+file pick.
+
+## Node checks
+
+The scripts in `examples/node-ci` drive `probe-rs serve` from Node (`node <script>.ts …`).
+Each prints PASS/FAIL per check and exits non-zero on failure. `--url` (default
+`ws://127.0.0.1:3000`) and `--token` (default `$PROBE_RS_TOKEN`, else `probe-web`) apply to
+all. Paths are relative to `examples/node-ci`.
+
+| Script | MCXA153 | nRF9160 | ESP32-S3 |
+|---|---|---|---|
+| `run.ts`: flash, verify, monitor until exit | — | `--elf …/nrf9160-semihosting.elf --chip nRF9160_xxAA --expect "exiting with success"` | — |
+| `debug.ts`: the SDK `Debugger` (Cortex-M) | `--elf ../../apps/flash/public/firmware/mcxa153-debug.elf --chip MCXA153 --probe mcu-link` | `--elf …/nrf9160-debug.elf --chip nRF9160_xxAA --probe j-link` | — |
+| `dap.ts`: `@probe-web/dap` | `--elf …/mcxa153-debug.elf --chip MCXA153 --probe mcu-link` | `--elf …/nrf9160-debug.elf --chip nRF9160_xxAA --probe j-link` | `--elf …/esp32s3-debug.elf --chip esp32s3 --probe jtag --protocol Jtag --srcPath bin/main.rs --firmwareSrc ../../hardware-tests/firmware/esp32s3-debug/src/bin/main.rs --noDisassembly` |
+| `debug-basic.ts`: run control without an ELF | `--chip MCXA153 --probe mcu-link` | `--chip nRF9160_xxAA --probe j-link` | `--chip esp32s3 --protocol Jtag --probe jtag` |
+| `robustness.ts`: bad requests come back as errors | any | any | `--chip esp32s3 --protocol Jtag --probe jtag` |
+| `semihosting.ts`: `--mode debugger` or `--mode monitor` | — | defaults | — |
+| `rtt-scan-pacing.ts`: RTT scans with no control block; run serve with `--log-file` and count `control block not found` | — | — | `--chip esp32s3 --protocol Jtag --probe jtag --size 0x400 --seconds 8` |
+
+`probe-rs serve` has no Xtensa disassembler, hence `--noDisassembly` on the ESP32-S3.

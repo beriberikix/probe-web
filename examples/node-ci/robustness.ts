@@ -1,6 +1,6 @@
 /**
  * `probe-rs serve` robustness: requests with a bad core index must come back as errors
- * and leave the connection usable (they used to be able to panic it).
+ * and leave the connection usable, not panic the server.
  *
  *   node robustness.ts --chip esp32s3 --protocol Jtag --probe jtag
  *   node robustness.ts --chip nRF9160_xxAA --probe j-link --address 0x20000000
@@ -11,7 +11,7 @@ import { Client } from '@probe-web/client';
 const { values: args } = parseArgs({
   options: {
     url: { type: 'string', default: 'ws://127.0.0.1:3000' },
-    token: { type: 'string', default: 'spike' },
+    token: { type: 'string', default: process.env.PROBE_RS_TOKEN ?? 'probe-web' },
     chip: { type: 'string' },
     probe: { type: 'string' },
     protocol: { type: 'string', default: 'Swd' },

@@ -21,12 +21,16 @@ function label(r: RegisterValue): string {
 /**
  * `<probe-registers>`: the core's registers, grouped (core, system, floating
  * point), refreshed at every stop with changed values highlighted.
- * Double-click a value to edit it while the core is halted.
+ * Double-click a value to edit it while the core is halted (hex, `0b…` or decimal).
+ *
+ * Fires no events.
  */
 @customElement('probe-registers')
 export class ProbeRegisters extends LitElement {
+  /** @internal */
   static styles = debugStyles;
 
+  /** The debugger whose core registers are shown. */
   @property({ attribute: false }) debugger: Debugger | null = null;
   @state() private values: RegisterValue[] = [];
   @state() private previous = new Map<number, bigint>();

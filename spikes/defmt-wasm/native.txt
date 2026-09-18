@@ -1,5 +1,0 @@
-info: hello from qemu 42
-warn: bytes=[1, 2, 3, 250] f=1.5 s=str
-debug: point Point { x: -7, y: 9 } big=0xdeadbeef
-trace: neg=-1 bool=true
-error: done

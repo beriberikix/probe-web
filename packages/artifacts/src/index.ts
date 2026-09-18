@@ -1,48 +1,89 @@
 /**
- * @probe-web/artifacts — firmware images as inputs: pick a file once with the
- * File System Access API, keep the handle (persisted in IndexedDB so it
- * survives reloads), and watch it so a rebuild re-flashes without another
- * file dialog. Also plain sources: drag-drop files, URLs.
+ * Firmware images as inputs: pick a file once with the File System Access
+ * API, keep the handle (persisted in IndexedDB so it survives reloads), and
+ * watch it so a rebuild re-flashes without another file dialog. Also plain
+ * sources (drag-dropped files, URLs) and {@link downloadBytes} for handing a
+ * file back to the user.
+ *
+ * The file picker and handle persistence need the File System Access API
+ * (Chromium-based desktop browsers; check {@link hasFileSystemAccess}), and
+ * {@link pickFile} must run in a user gesture.
+ *
+ * @example
+ * ```ts
+ * import { pickFile } from '@probe-web/artifacts';
+ *
+ * button.onclick = async () => {
+ *   const artifact = await pickFile({ extensions: ['.elf'] }); // user gesture: opens the picker
+ *   await flash(await artifact.bytes());
+ *   // Poll the file; flash again after each rebuild, once the file has stopped changing.
+ *   const stop = artifact.watch((change) => void flash(change.bytes));
+ * };
+ * ```
+ *
+ * @packageDocumentation
  */
 
+/** A firmware image that can be read, and possibly watched, whatever it came from. */
 export interface ArtifactSource {
   /** Stable name for caching/logs (file name or URL). */
   name: string;
   /** Read the current bytes. */
   bytes(): Promise<Uint8Array>;
-  /** Watchable sources report changes; others resolve `null`. */
+  /**
+   * Call `onChange` with the new contents whenever the source changes; returns
+   * a function that stops watching. Only watchable sources (a
+   * {@link FileArtifact}) have it.
+   */
   watch?(onChange: (a: ArtifactChange) => void, opts?: WatchOptions): () => void;
 }
 
+/** A new version of a watched file, passed to the `watch` callback. */
 export interface ArtifactChange {
+  /** File name. */
   name: string;
+  /** The file's full contents after the change. */
   bytes: Uint8Array;
+  /** Modification time, in ms since the epoch. */
   lastModified: number;
+  /** Size in bytes. */
   size: number;
 }
 
+/** Polling options for {@link watchFile} and {@link FileArtifact.watch}. */
 export interface WatchOptions {
-  /** Poll interval in ms (the File System Access API has no change events). */
+  /** Poll interval in ms (the File System Access API has no change events). Default 500. */
   intervalMs?: number;
-  /** Debounce: wait until the file stops changing for this long (build tools write in steps). */
+  /** Debounce: wait until the file stops changing for this long, in ms (build tools write in steps). Default 300. */
   settleMs?: number;
 }
 
+/** True when the File System Access API's file picker (`showOpenFilePicker`) is available. */
 export function hasFileSystemAccess(): boolean {
   return typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 }
 
 /** Minimal shape of the parts of FileSystemFileHandle we use, for tests. */
 export interface FileHandleLike {
+  /** File name. */
   name: string;
+  /** Snapshot of the file's current contents and metadata. */
   getFile(): Promise<{ name: string; lastModified: number; size: number; arrayBuffer(): Promise<ArrayBuffer> }>;
+  /** Current read permission, without prompting. */
   queryPermission?(d: { mode: 'read' }): Promise<PermissionState>;
+  /** Ask the user for read permission (needs a user gesture). */
   requestPermission?(d: { mode: 'read' }): Promise<PermissionState>;
 }
 
 /** A file picked with the File System Access API; watchable. */
 export class FileArtifact implements ArtifactSource {
+  /**
+   * Wrap a file handle, e.g. one from `showOpenFilePicker` or a drag-drop.
+   *
+   * @param handle The underlying file handle; pass it to {@link rememberHandle} to keep it across reloads.
+   */
   constructor(readonly handle: FileHandleLike) {}
+  /** The file's name. */
   get name() { return this.handle.name; }
 
   /** True when read permission is already granted (no user gesture needed). */
@@ -58,17 +99,24 @@ export class FileArtifact implements ArtifactSource {
     return (await this.handle.requestPermission?.({ mode: 'read' })) === 'granted';
   }
 
+  /** Read the file's current contents. */
   async bytes(): Promise<Uint8Array> {
     const f = await this.handle.getFile();
     return new Uint8Array(await f.arrayBuffer());
   }
 
+  /** Watch the file for changes with {@link watchFile}; returns a function that stops watching. */
   watch(onChange: (a: ArtifactChange) => void, opts: WatchOptions = {}): () => void {
     return watchFile(this.handle, onChange, opts);
   }
 }
 
-/** Poll a file handle's `lastModified`/`size`; fire once the file has settled. */
+/**
+ * Poll a file handle's `lastModified`/`size`; fire once the file has settled.
+ * The first read is the baseline and does not fire. If a read fails (permission
+ * revoked, file gone) polling continues and the next successful read becomes
+ * the new baseline. Returns a function that stops polling.
+ */
 export function watchFile(handle: FileHandleLike, onChange: (a: ArtifactChange) => void, opts: WatchOptions = {}): () => void {
   const interval = opts.intervalMs ?? 500;
   const settle = opts.settleMs ?? 300;
@@ -117,7 +165,12 @@ async function waitStable(handle: FileHandleLike, seen: { lastModified: number; 
   return null;
 }
 
-/** Open the file picker (user gesture required). */
+/**
+ * Open the file picker (user gesture required) for one firmware image. By
+ * default it offers `.elf`, `.hex`, `.bin`, `.uf2` and `.axf`; `extensions`
+ * replaces that list and `description` labels it. Rejects if the API is
+ * missing or the user cancels.
+ */
 export async function pickFile(opts: { description?: string; extensions?: string[] } = {}): Promise<FileArtifact> {
   if (!hasFileSystemAccess()) throw new Error('File System Access API is not available in this browser');
   const w = window as unknown as { showOpenFilePicker(o: unknown): Promise<FileHandleLike[]> };
@@ -161,8 +214,11 @@ function openDb(): Promise<IDBDatabase> {
 
 /** A handle whose read permission can be queried and requested (file or directory handle). */
 export interface PermissionHandleLike {
+  /** File or directory name. */
   name: string;
+  /** Current read permission, without prompting. */
   queryPermission?(d: { mode: 'read' }): Promise<PermissionState>;
+  /** Ask the user for read permission (needs a user gesture). */
   requestPermission?(d: { mode: 'read' }): Promise<PermissionState>;
 }
 
@@ -195,7 +251,7 @@ export async function rememberHandle(key: string, handle: FileHandleLike | Permi
   });
 }
 
-/** Restore a remembered handle; `null` if none. Call `ensurePermission()` before reading. */
+/** Restore a remembered file handle; `null` if none. Call {@link FileArtifact.ensurePermission} before reading. */
 export async function recallHandle(key: string): Promise<FileArtifact | null> {
   try {
     const db = await openDb();
@@ -224,6 +280,7 @@ export async function recallRawHandle<T = unknown>(key: string): Promise<T | nul
   }
 }
 
+/** Delete the handle remembered under `key`, if any. */
 export async function forgetHandle(key: string): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve) => {
@@ -237,12 +294,20 @@ export async function forgetHandle(key: string): Promise<void> {
 
 /** Where handles are kept; `indexedDbHandleStore` in browsers, a map in tests. */
 export interface HandleStore {
+  /** The handle stored under `key`, or `null` / `undefined` if none. */
   get(key: string): Promise<unknown>;
+  /** Store `handle` under `key`, replacing any previous one. */
   put(key: string, handle: unknown): Promise<void>;
+  /** Remove the handle stored under `key`. */
   delete(key: string): Promise<void>;
+  /** Every stored key. */
   keys(): Promise<string[]>;
 }
 
+/**
+ * The {@link HandleStore} used in browsers: the same IndexedDB store as
+ * {@link rememberHandle}, {@link recallRawHandle} and {@link forgetHandle}.
+ */
 export const indexedDbHandleStore: HandleStore = {
   get: (key) => recallRawHandle(key),
   put: (key, handle) => rememberHandle(key, handle as PermissionHandleLike),
@@ -261,12 +326,15 @@ export const indexedDbHandleStore: HandleStore = {
   },
 };
 
+/** One handle for {@link restoreHandles} to restore, and what to do with it. */
 export interface RestoreEntry<H extends PermissionHandleLike = PermissionHandleLike> {
+  /** Key the handle was stored under. */
   key: string;
   /** Use the restored handle (read the file, index the folder, …). */
   apply(handle: H): Promise<void> | void;
 }
 
+/** Outcome of {@link restoreHandles}. Keys with nothing stored appear in none of the lists. */
 export interface RestoreResult {
   /** Keys whose handle was applied. */
   restored: string[];
@@ -278,7 +346,9 @@ export interface RestoreResult {
 
 /**
  * Restore remembered handles in order. Without `request` nothing prompts, so it is safe on page
- * load; with it, each missing permission is requested (call from a click handler).
+ * load; with it, each missing permission is requested (call from a click handler). A typical page
+ * calls it once on load, then again with `request: true` from a button when
+ * {@link RestoreResult.waiting} is not empty.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function restoreHandles(store: HandleStore, entries: RestoreEntry<any>[], opts: { request?: boolean } = {}): Promise<RestoreResult> {
@@ -301,11 +371,10 @@ export async function restoreHandles(store: HandleStore, entries: RestoreEntry<a
 }
 
 /**
- * Hand the user a file.
+ * Hand the user a file, e.g. a coredump or an exported memory region, as a download named
+ * `name`.
  *
- * This package has been read-only until now — opening firmware and watching it change —
- * but a coredump or an exported memory region has to travel the other way. There is no
- * `showSaveFilePicker` here on purpose: it is Chromium-only and needs a user gesture,
+ * There is no `showSaveFilePicker` here on purpose: it is Chromium-only and needs a user gesture,
  * whereas an object URL works wherever the rest of this does, including inside the
  * sandboxed frame the tests run in.
  *

@@ -14,17 +14,15 @@
 //! `InstructionSet` carries no rename, so `Thumb2` is written as-is. Reusing them keeps
 //! this file from becoming a second, drifting copy of probe-rs's types.
 //!
-//! `CoreType` is the exception, and it is the reason this is verified rather than
-//! reasoned about: probe-rs declares it `#[serde(rename_all = "snake_case")]`, so it
-//! reads `"armv8m"` while the wire enum has no rename and writes `"Armv8m"`. A first
-//! version serialized the wire enum directly and produced a file probe-rs rejected with
-//! `unknown variant Armv8m`. The names below are therefore spelled out.
+//! `CoreType` is the exception: probe-rs declares it `#[serde(rename_all = "snake_case")]`,
+//! so it reads `"armv8m"`, while the wire enum has no rename and would write `"Armv8m"`,
+//! which probe-rs rejects (`unknown variant Armv8m`). The names below are therefore spelled
+//! out.
 //!
-//! Using the wire types also sidesteps a version skew that a first attempt walked into:
-//! the RPC schema follows probe-rs master, while the fork this project builds against is
-//! `probe-rs-target` 0.28, whose `CoreType` and `InstructionSet` are missing variants the
-//! wire can carry (`Armv7r`, `Riscv64`, `RV64`, `RV64C`). Encoding through the older
-//! enums would have made those dumps unrepresentable.
+//! Using the wire types also avoids a version skew: the RPC schema follows probe-rs master,
+//! while the fork this project builds against is `probe-rs-target` 0.28, whose `CoreType`
+//! and `InstructionSet` lack variants the wire can carry (`Armv7r`, `Riscv64`, `RV64`,
+//! `RV64C`). Encoding through the older enums would make those dumps unrepresentable.
 //!
 //! The coupling to probe-rs's field names is real, so it is checked rather than assumed:
 //! `cargo run -p probe-web-local --example check-coredump -- <file>` opens a file we wrote

@@ -6,20 +6,24 @@ import { SampleDecoder, type SampleFormat } from './samples.ts';
 /**
  * `<probe-rtt-plot>`: plot the numbers coming out of a binary RTT channel.
  *
- * `cargo-embed` has had this for years as `probe-rs trace` writing pairs to stdout for an
- * external `plot.py`; in a browser there is no reason to leave the page. A firmware that
- * writes samples to a `BinaryLE` channel gets a live trace with no extra tooling.
+ * Native tooling does this with `probe-rs trace` writing pairs to stdout for an external
+ * `plot.py`; in a browser there is no reason to leave the page. A firmware that writes
+ * samples to a `BinaryLE` channel gets a live trace with no extra tooling. Samples are
+ * decoded with a {@link SampleDecoder} from the `Debugger`'s `rtt-bytes` events, or fed
+ * in with {@link ProbeRttPlot.push}.
  *
  * Drawn on a canvas rather than with a charting library: a rolling line plot is about a
  * hundred lines, and the alternative is a dependency and its licence for every visitor who
- * loads the workbench. `<probe-memory-view>` made the same call about hex rendering.
+ * loads the page. `<probe-memory-view>` makes the same call about hex rendering.
  *
- * Fires `channel-changed` when the user picks a different channel. A host has to act on it:
- * a channel only yields bytes if it was configured as `BinaryLE` when RTT was set up, which
- * happens once, at the start of a run.
+ * @fires channel-changed - The user picked a different channel. `detail` is the channel
+ *   number. A host has to act on it: a channel only yields bytes if it was configured as
+ *   `BinaryLE` when RTT was set up (`debugger.enableRtt({ channels })`), which happens once,
+ *   at the start of a run.
  */
 @customElement('probe-rtt-plot')
 export class ProbeRttPlot extends DebuggerElement {
+  /** @internal */
   static styles = css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
@@ -59,7 +63,11 @@ export class ProbeRttPlot extends DebuggerElement {
     super.disconnectedCallback();
   }
 
-  /** Feed bytes in directly. Used by the tests, and by anything not driving a `Debugger`. */
+  /**
+   * Feed bytes in directly, as if they came from the `Debugger`'s `rtt-bytes` event.
+   * Bytes for a channel other than {@link ProbeRttPlot.channel} are ignored. Used by the
+   * tests, and by anything not driving a `Debugger`.
+   */
   push(channel: number, bytes: Uint8Array) {
     this.#take(new CustomEvent('rtt-bytes', { detail: { channel, bytes } }));
   }

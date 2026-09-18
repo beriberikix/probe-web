@@ -4,10 +4,10 @@
 # versions the git dependencies resolve to. `paths` is a top-level key: inside a [target]
 # table cargo rejects it ("expected a table, but found a array").
 # paths = [
-#     "../probe-rs/probe-rs",
+#     "../probe-rs/probe-rs",                          # branch webusb/nusb-0.2.7
 #     "../probe-rs/probe-rs-debug",
-#     "../prs-wasm-rpc/probe-rs-rpc",
-#     "../prs-wasm-rpc/probe-rs-rpc-client",
+#     "../probe-rs-rpc-client/probe-rs-rpc",          # branch wasm-rpc-client
+#     "../probe-rs-rpc-client/probe-rs-rpc-client",
 #     "../cmsis-pack-manager/rust/cmsis-pack",
 # ]
 

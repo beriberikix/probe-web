@@ -11,13 +11,17 @@ import {
 /**
  * `<probe-serial-monitor>`: a WebSerial console (baud picker, send line with
  * a chosen line ending, RTS reset pulse, clear) in an xterm.js terminal.
- * For boards whose console is a UART bridge rather than RTT.
+ * For boards whose console is a UART bridge rather than RTT. The first
+ * previously granted port is preselected.
  *
- * Events: `serial-line` (detail: string, one per received line),
- * `serial-state` (detail: { connected, reason? }).
+ * @fires serial-line - One per complete line received. `detail` is the line (a string,
+ *   without its line ending).
+ * @fires serial-state - The port was opened or closed. `detail` is
+ *   `{ connected: boolean, reason?: string }`; `reason` says why it closed.
  */
 @customElement('probe-serial-monitor')
 export class ProbeSerialMonitor extends LitElement {
+  /** @internal */
   static styles = [unsafeCSS(xtermCss), css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
@@ -29,7 +33,9 @@ export class ProbeSerialMonitor extends LitElement {
 
   /** The port to use; set it, or let the user pick one with *Choose port…*. */
   @property({ attribute: false }) port: SerialPortLike | null = null;
+  /** Baud rate used by {@link ProbeSerialMonitor.connect}. */
   @property({ type: Number }) baudRate = 115200;
+  /** Line ending appended by {@link ProbeSerialMonitor.send}: `'none'`, `'lf'`, `'cr'` or `'crlf'`. */
   @property({ attribute: 'line-ending' }) lineEnding: LineEnding = 'crlf';
   @state() private connection: SerialConnection | null = null;
   @state() private status = '';
@@ -74,6 +80,7 @@ export class ProbeSerialMonitor extends LitElement {
     new ResizeObserver(() => this.fit.fit()).observe(el);
   }
 
+  /** Open the browser's port chooser (needs a user gesture) and select the chosen port. */
   async choosePort() {
     try {
       this.port = await requestPort({ any: (this.renderRoot.querySelector('#any') as HTMLInputElement)?.checked });
@@ -83,6 +90,7 @@ export class ProbeSerialMonitor extends LitElement {
     }
   }
 
+  /** Open {@link ProbeSerialMonitor.port} at {@link ProbeSerialMonitor.baudRate} and start showing its output; fires `serial-state`. */
   async connect() {
     if (!this.port || this.connection) return;
     this.lines = new LineDecoder();
@@ -104,6 +112,7 @@ export class ProbeSerialMonitor extends LitElement {
     }
   }
 
+  /** Close the port; `serial-state` fires once it has closed. */
   async disconnect() {
     await this.connection?.close();
   }

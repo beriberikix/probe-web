@@ -12,7 +12,7 @@ import { Client } from '@probe-web/client';
 const { values: args } = parseArgs({
   options: {
     url: { type: 'string', default: 'ws://127.0.0.1:3000' },
-    token: { type: 'string', default: 'spike' },
+    token: { type: 'string', default: process.env.PROBE_RS_TOKEN ?? 'probe-web' },
     chip: { type: 'string' },
     probe: { type: 'string' },
     protocol: { type: 'string', default: 'Swd' },

@@ -1,10 +1,34 @@
 {
   "name": "@probe-web/dap",
   "version": "0.0.0",
-  "type": "module",
   "description": "Debug Adapter Protocol for probe-rs in the browser (inline adapter over @probe-web/client's Debugger)",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "test": "vitest run" },
-  "dependencies": { "@probe-web/client": "*" },
-  "devDependencies": { "@vscode/debugprotocol": "^1.68.0", "vitest": "^2.1.0" }
+  "keywords": [
+    "probe-rs",
+    "embedded",
+    "dap",
+    "debug-adapter",
+    "debugger"
+  ],
+  "homepage": "https://beriberikix.github.io/probe-web/api/dap/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beriberikix/probe-web.git",
+    "directory": "packages/dap"
+  },
+  "bugs": "https://github.com/beriberikix/probe-web/issues",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@probe-web/client": "*"
+  },
+  "devDependencies": {
+    "@vscode/debugprotocol": "^1.68.0",
+    "vitest": "^2.1.0"
+  }
 }

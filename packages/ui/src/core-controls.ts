@@ -3,7 +3,10 @@ import { customElement, property, state } from 'lit/decorators.js';
 import type { Debugger, RunState, StoppedDetail } from '@probe-web/client';
 import { debugStyles, errorText, hex } from './debug-style.ts';
 
-/** Describe a halt reason for people. */
+/**
+ * Describe a halt reason for people: `paused`, `step`, `breakpoint 1, 2`,
+ * `semihosting`, and so on. Returns `''` for `null`.
+ */
 export function describeStop(stop: StoppedDetail | null): string {
   if (!stop) return '';
   const r = stop.reason;
@@ -19,12 +22,38 @@ export function describeStop(stop: StoppedDetail | null): string {
 /**
  * `<probe-core-controls>`: run control for one core — continue, pause, step
  * (over / into / out / instruction), reset, reset-and-halt, vector catch —
- * and the core's state. Events: `debug-error` (detail: Error).
+ * and the core's state, with the halt reason and PC when halted.
+ *
+ * Like the other debugger panels it takes a `Debugger` (from
+ * `session.debugger()`) and follows its events; any number of panels can share one.
+ *
+ * @fires debug-error - A run-control command failed. `detail` is the error; the message
+ *   is also shown in the panel.
+ *
+ * @example
+ * ```html
+ * <probe-core-controls></probe-core-controls>
+ * <probe-callstack></probe-callstack>
+ * <probe-variables></probe-variables>
+ * ```
+ * ```ts
+ * const d = session.debugger();
+ * await d.loadDebugInfo(elf, 'firmware.elf');
+ * for (const el of document.querySelectorAll('probe-core-controls, probe-callstack, probe-variables')) {
+ *   (el as ProbeCoreControls | ProbeCallstack | ProbeVariables).debugger = d;
+ * }
+ * const vars = document.querySelector('probe-variables')!;
+ * document.querySelector('probe-callstack')!.addEventListener('frame-selected', (e) => {
+ *   vars.frame = (e as CustomEvent<Frame>).detail;
+ * });
+ * ```
  */
 @customElement('probe-core-controls')
 export class ProbeCoreControls extends LitElement {
+  /** @internal */
   static styles = debugStyles;
 
+  /** The debugger to control; the buttons are disabled without one. */
   @property({ attribute: false }) debugger: Debugger | null = null;
   @state() private runState: RunState = 'unknown';
   @state() private stop: StoppedDetail | null = null;

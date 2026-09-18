@@ -10,9 +10,13 @@ const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
  * `<probe-breakpoints>`: all breakpoints with where they were placed, whether
  * a hardware comparator was available, and which one the core stopped at.
  * Add `file:line` (a path suffix such as `src/main.rs:40`) or an address (`0x…`).
+ *
+ * Fires no events: changes go through the `Debugger`, whose `breakpoints` event
+ * keeps every panel (including `<probe-disassembly>`'s gutter) in step.
  */
 @customElement('probe-breakpoints')
 export class ProbeBreakpoints extends DebuggerElement {
+  /** @internal */
   static styles = debugStyles;
 
   @state() private list: Breakpoint[] = [];
@@ -31,7 +35,7 @@ export class ProbeBreakpoints extends DebuggerElement {
     this.hit = d.lastStop?.breakpoints ?? [];
   }
 
-  /** Add a breakpoint from `file:line` or an address. */
+  /** Add a breakpoint from `file:line` or an address (`0x…` or decimal); errors are shown in the panel. */
   async add(spec: string) {
     const d = this.debugger;
     const text = spec.trim();
@@ -54,6 +58,7 @@ export class ProbeBreakpoints extends DebuggerElement {
     this.sync();
   }
 
+  /** Remove one breakpoint, keeping the others. */
   async removeBreakpoint(bp: Breakpoint) {
     const d = this.debugger;
     if (!d) return;
@@ -71,6 +76,7 @@ export class ProbeBreakpoints extends DebuggerElement {
     this.sync();
   }
 
+  /** Remove every breakpoint. */
   async removeAll() {
     try {
       await this.debugger?.clearBreakpoints();

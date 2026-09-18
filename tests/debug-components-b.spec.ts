@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 type FakeWindow = { fake: { calls: string[]; hit(pc?: bigint): void; continue(): Promise<void> } };
 const calls = (page: import('@playwright/test').Page) => page.evaluate(() => (window as unknown as FakeWindow).fake.calls);
 
-// Slice 5 components against the FakeDebugger (debug.html?fake=1).
+// Breakpoints, disassembly, memory view and peripherals against the FakeDebugger (debug.html?fake=1).
 test.describe('debugger components B (fake debugger)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/debug.html?fake=1');

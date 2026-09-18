@@ -1,8 +1,29 @@
 {
   "name": "@probe-web/artifacts",
   "version": "0.0.0",
+  "description": "Firmware files in the browser: pick, remember and watch files for re-flash on rebuild",
+  "keywords": [
+    "probe-rs",
+    "embedded",
+    "file-system-access",
+    "firmware"
+  ],
+  "homepage": "https://beriberikix.github.io/probe-web/api/artifacts/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beriberikix/probe-web.git",
+    "directory": "packages/artifacts"
+  },
+  "bugs": "https://github.com/beriberikix/probe-web/issues",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "test": "vitest run" },
-  "devDependencies": { "vitest": "^2.1.0" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
 }

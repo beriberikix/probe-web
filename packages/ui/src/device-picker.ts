@@ -4,12 +4,32 @@ import type { Client, Wire } from '@probe-web/client';
 import { describe, grantedDevices, hasWebUsb, onDevicesChanged, requestProbe } from '@probe-web/devices';
 
 /**
- * `<probe-device-picker>`: lists probes the connected client can see and
- * lets the user grant a new WebUSB device. Fires `probe-selected` with the
- * chosen `DebugProbeEntry` in `detail`.
+ * `<probe-device-picker>`: lists the probes the connected `Client` can see
+ * and, on the WebUSB transport, lets the user grant access to a new device.
+ * When exactly one probe is visible it is selected automatically.
+ *
+ * @fires probe-selected - A probe was chosen (by a click, or automatically when it is
+ *   the only one). `detail` is the `Wire.DebugProbeEntry`; pass it to `client.attach()`.
+ * @fires device-authorized - The user granted a new WebUSB device through the browser's
+ *   chooser. `detail` is its `ProbeDescription` from `@probe-web/devices`. Does not bubble.
+ *
+ * @example
+ * ```html
+ * <probe-device-picker id="picker"></probe-device-picker>
+ * ```
+ * ```ts
+ * const client = await Client.connect({ kind: 'webusb', worker });
+ * const picker = document.querySelector('probe-device-picker')!;
+ * picker.client = client;
+ * picker.addEventListener('probe-selected', async (e) => {
+ *   const probe = (e as CustomEvent<Wire.DebugProbeEntry>).detail;
+ *   const session = await client.attach({ probe, chip: 'nRF52840_xxAA' });
+ * });
+ * ```
  */
 @customElement('probe-device-picker')
 export class ProbeDevicePicker extends LitElement {
+  /** @internal */
   static styles = css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     ul { list-style: none; padding: 0; margin: 8px 0; }
@@ -21,6 +41,7 @@ export class ProbeDevicePicker extends LitElement {
     .warn { color: #b45309; }
   `;
 
+  /** The connection whose probes are listed; `null` shows "Not connected." */
   @property({ attribute: false }) client: Client | null = null;
   @state() private probes: Wire.DebugProbeEntry[] = [];
   @state() private granted = 0;
@@ -41,6 +62,7 @@ export class ProbeDevicePicker extends LitElement {
     if (changed.has('client')) void this.refresh();
   }
 
+  /** Re-read the granted WebUSB devices and the client's probe list. */
   async refresh() {
     this.error = null;
     try {
@@ -52,6 +74,10 @@ export class ProbeDevicePicker extends LitElement {
     }
   }
 
+  /**
+   * Open the browser's WebUSB chooser to grant a new probe, then refresh the list.
+   * Must run from a user gesture (the *Authorize device…* button does this).
+   */
   async authorize() {
     try {
       const d = await requestProbe();
@@ -64,6 +90,7 @@ export class ProbeDevicePicker extends LitElement {
     }
   }
 
+  /** Mark `p` as selected and fire `probe-selected`. */
   select(p: Wire.DebugProbeEntry) {
     this.selected = key(p);
     this.dispatchEvent(new CustomEvent('probe-selected', { detail: p, bubbles: true, composed: true }));

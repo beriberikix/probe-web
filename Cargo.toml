@@ -1,13 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "spikes/*"]
-# Cross-compiled fixture with its own workspace and target.
-exclude = ["spikes/defmt-fixture"]
+members = ["crates/*", "tools/*"]
 
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/beriberikix/probe-web"
+homepage = "https://beriberikix.github.io/probe-web/"
 
 [workspace.dependencies]
 wasm-bindgen = "0.2"

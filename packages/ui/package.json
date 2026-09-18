@@ -1,6 +1,22 @@
 {
   "name": "@probe-web/ui",
   "version": "0.0.0",
+  "description": "Web components for flashing and debugging embedded targets from a browser, on @probe-web/client",
+  "keywords": [
+    "probe-rs",
+    "embedded",
+    "web-components",
+    "lit",
+    "debugger"
+  ],
+  "homepage": "https://beriberikix.github.io/probe-web/api/ui/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beriberikix/probe-web.git",
+    "directory": "packages/ui"
+  },
+  "bugs": "https://github.com/beriberikix/probe-web/issues",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

@@ -1,14 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
-// One build for every app, so they share chunks: built separately, each carried its own copy of
+// One build for every app and example, so they share chunks: built separately, each carried its own copy of
 // the 12.6 MB probe-rs worker and the client wasm. The apps end up under one origin anyway —
 // WebUSB grants are per origin — and `scripts/build-site.sh` moves each app's HTML into place
 // afterwards, which is safe because `base` makes every asset URL absolute.
 const app = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
-  // The repo root, so one build can reach all four apps. Their entry scripts are referenced
+  // The repo root, so one build can reach every app. Their entry scripts are referenced
   // relatively (`./src/main.ts`) for the same reason.
   root: fileURLToPath(new URL('.', import.meta.url)),
   // The flasher's public directory is the site's: manifests, demo firmware, SVDs.
@@ -29,6 +29,7 @@ export default defineConfig({
         inspect: app('apps/inspect/index.html'),
         workbench: app('apps/workbench/index.html'),
         'monaco-ide': app('examples/monaco-ide/index.html'),
+        'minimal-flash': app('examples/minimal-flash/index.html'),
       },
     },
   },

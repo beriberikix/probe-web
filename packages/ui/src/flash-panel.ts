@@ -6,12 +6,41 @@ import { FileArtifact, forgetHandle, hasFileSystemAccess, pickFile, recallHandle
 interface Bar { operation: string; total: number | null; done: number; state: 'pending' | 'running' | 'done' | 'failed'; startedAt: number }
 
 /**
- * `<probe-flash-panel>`: picks an image (file or preset job), shows the
- * per-operation progress probe-rs reports (fill/erase/program/verify), and
- * fires `flash-done` with the BootInfo or `flash-failed` with the error.
+ * `<probe-flash-panel>`: picks an image (a file, a watched file, or a preset
+ * `FlashJob`), shows the per-operation progress probe-rs reports
+ * (fill/erase/program/verify), and offers verify-only and erase-all.
+ *
+ * With the File System Access API, *Pick file & watch…* keeps a handle to the
+ * file (remembered across reloads under {@link ProbeFlashPanel.rememberAs}) and
+ * re-flashes whenever it changes on disk.
+ *
+ * @fires flash-done - Flashing succeeded. `detail` is `{ bootInfo, ms }`: the
+ *   `Wire.BootInfo` to hand to `<probe-rtt-terminal>` / `<probe-test-runner>`, and the
+ *   duration in milliseconds.
+ * @fires flash-failed - Flashing threw. `detail` is the error.
+ * @fires verify-done - A verify-only run finished. `detail` is the `Wire.VerifyResult`
+ *   (`'Ok'` or `'Mismatch'`).
+ * @fires erase-done - An erase-all finished. No `detail`.
+ * @fires artifact-changed - The watched file changed on disk. `detail` is the
+ *   `ArtifactChange` from `@probe-web/artifacts` (`name`, `bytes`, `lastModified`).
+ *   Fired before the automatic re-flash starts.
+ *
+ * @example
+ * ```html
+ * <probe-flash-panel id="flash" chip-erase></probe-flash-panel>
+ * ```
+ * ```ts
+ * const flash = document.querySelector('probe-flash-panel')!;
+ * flash.session = session;
+ * flash.addEventListener('flash-done', (e) => {
+ *   const { bootInfo, ms } = (e as CustomEvent<{ bootInfo: Wire.BootInfo; ms: number }>).detail;
+ *   rtt.bootInfo = bootInfo;
+ * });
+ * ```
  */
 @customElement('probe-flash-panel')
 export class ProbeFlashPanel extends LitElement {
+  /** @internal */
   static styles = css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
@@ -26,11 +55,18 @@ export class ProbeFlashPanel extends LitElement {
     .layout { font-size: 12px; color: #444; }
   `;
 
+  /** The attached session to flash through; the buttons are disabled without one. */
   @property({ attribute: false }) session: Session | null = null;
-  /** Optional preset job (e.g. from a manifest). A chosen file overrides its image. */
+  /**
+   * Optional preset job (e.g. from a manifest). A chosen or watched file overrides its
+   * image; its format, base address, skip and options are kept.
+   */
   @property({ attribute: false }) job: FlashJob | null = null;
+  /** Verify the flash contents after programming. */
   @property({ type: Boolean }) verify = true;
+  /** Erase the whole chip rather than only the sectors being written. */
   @property({ type: Boolean, attribute: 'chip-erase' }) chipErase = false;
+  /** Preserve the bytes of partially written sectors instead of leaving them erased. */
   @property({ type: Boolean, attribute: 'keep-unwritten' }) keepUnwritten = false;
 
   @state() private file: File | null = null;
@@ -39,7 +75,10 @@ export class ProbeFlashPanel extends LitElement {
   @state() private autoReflash = true;
   @state() private watching = false;
   private stopWatch: (() => void) | null = null;
-  /** Key under which the picked handle is remembered across reloads. */
+  /**
+   * Key under which the picked file handle is remembered (in IndexedDB) across reloads.
+   * Give each panel on a page its own key.
+   */
   @property({ attribute: 'remember-as' }) rememberAs = 'flash-panel';
   @state() private format: FormatName = 'target';
   @state() private baseAddress = '';
@@ -90,6 +129,10 @@ export class ProbeFlashPanel extends LitElement {
     else this.remembered = a;
   }
 
+  /**
+   * Resume watching the file remembered from a previous visit, asking the browser for read
+   * permission again. Needs a user gesture (the *Resume watching* button).
+   */
   async resumeWatch() {
     const a = this.remembered;
     if (!a) return;
@@ -102,11 +145,16 @@ export class ProbeFlashPanel extends LitElement {
     }
   }
 
+  /** Drop the remembered file handle so it is not offered again. */
   async forgetRemembered() {
     this.remembered = null;
     await forgetHandle(this.rememberAs);
   }
 
+  /**
+   * Pick a file with the File System Access API, remember it, and watch it: each change
+   * fires `artifact-changed` and, while *re-flash on change* is ticked, flashes it.
+   */
   async pickAndWatch() {
     try {
       const a = await pickFile();
@@ -143,6 +191,11 @@ export class ProbeFlashPanel extends LitElement {
     this.watching = false;
   }
 
+  /**
+   * The job the *Flash* button would run: the chosen file, else the watched file, else
+   * {@link ProbeFlashPanel.job}'s image, combined with the panel's format, address and option settings.
+   * `null` when there is no image.
+   */
   get effectiveJob(): FlashJob | null {
     const image = this.file ?? (this.artifact ? this.artifactBytes : undefined) ?? this.job?.image;
     if (!image) return null;
@@ -196,6 +249,7 @@ export class ProbeFlashPanel extends LitElement {
     this.bars = this.bars.map((b) => (b.operation === operation ? { ...b, ...p } : b));
   }
 
+  /** Flash {@link ProbeFlashPanel.effectiveJob}; fires `flash-done` or `flash-failed`. No-op without a session or image. */
   async flash() {
     const job = this.effectiveJob;
     if (!this.session || !job) return;
@@ -226,6 +280,7 @@ export class ProbeFlashPanel extends LitElement {
     this.layout = null;
   }
 
+  /** Compare the flash with {@link ProbeFlashPanel.effectiveJob}'s image without writing; fires `verify-done`. */
   async verifyOnly() {
     const job = this.effectiveJob;
     if (!this.session || !job) return;
@@ -241,6 +296,7 @@ export class ProbeFlashPanel extends LitElement {
     }
   }
 
+  /** Erase the whole flash; fires `erase-done`. */
   async eraseAll() {
     if (!this.session) return;
     this.begin();

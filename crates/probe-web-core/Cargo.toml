@@ -4,6 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 publish = false
 description = "Browser client for probe-rs: the probe-rs RPC client compiled to wasm, over WebSocket or a Worker"
 
@@ -12,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # probe-rs's RPC schema and client, from the fork branch that makes them build for wasm32
-# (upstream PR pending; see README). For local work against a checkout, see .cargo/config.toml.example.
+# (to be proposed upstream). For local work against a checkout, see .cargo/config.toml.
 probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 probe-rs-rpc-client = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 postcard-rpc = { version = "0.12", features = ["use-std"] }

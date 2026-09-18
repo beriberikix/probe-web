@@ -1,8 +1,19 @@
 /**
- * A scripted stand-in for `Debugger`, for UI and adapter tests without hardware.
- * It models a tiny program: `main → step_a → step_b` with locals, statics and
- * registers, run/pause/step transitions and breakpoints. Every mutating call is
- * recorded in `calls`.
+ * `@probe-web/client/testing`: a scripted stand-in for {@link index!Debugger}, for UI and adapter
+ * tests without hardware. For the WebUSB transport with a fake probe, see
+ * `@probe-web/client/testing/worker`.
+ *
+ * @example
+ * ```ts
+ * import { FakeDebugger } from '@probe-web/client/testing';
+ *
+ * const dbg = new FakeDebugger();
+ * await dbg.continue();
+ * dbg.hit(); // the "firmware" reaches a breakpoint: a `stopped` event fires
+ * expect(dbg.calls).toEqual(['continue']);
+ * ```
+ *
+ * @module testing
  */
 import type {
   Breakpoint, Evaluation, Frame, Instruction, RegisterInfo, RegisterValue, RunState, Scope, SourceLocation, SteppingMode, StoppedDetail, Variable,
@@ -19,20 +30,34 @@ const REGS: RegisterInfo[] = [
   { id: 64, name: 'S0', bits: 32, float: true, roles: ['FloatingPoint'] },
 ];
 
+/**
+ * A scripted stand-in for {@link index!Debugger} with the same methods and events, so it can be passed
+ * wherever a debugger is expected. It models a tiny program — `main → step_a → step_b` with
+ * locals, statics and registers — and run/pause/step transitions and breakpoints, starting
+ * halted at a breakpoint. Every mutating call is recorded in {@link FakeDebugger.calls}.
+ */
 export class FakeDebugger extends EventTarget {
+  /** As {@link index!Debugger.state}; starts `halted`. */
   state: RunState = 'halted';
+  /** As {@link index!Debugger.lastStop}. */
   lastStop: StoppedDetail | null = { reason: { Breakpoint: 'Hardware' }, pc: 0x978n, breakpoints: [] };
+  /** As {@link index!Debugger.epoch}; bumped whenever the fake core moves. */
   epoch = 0;
+  /** Every mutating call, in order, e.g. `continue`, `step over`, `writeRegister R0=2a`. */
   readonly calls: string[] = [];
-  /** Program state the fake exposes. */
+  /** The program's `n` local (in `main`), which {@link FakeDebugger.hit} increments. */
   n = 2;
+  /** The program's `COUNTER` static, which {@link FakeDebugger.hit} increments. */
   counter = 1;
+  /** The source line the innermost frame is on. */
   line = 40;
+  /** Register values by register id. */
   registers = new Map<number, bigint>(REGS.map((r) => [r.id, BigInt(r.id)]));
   private bps: Breakpoint[] = [];
   private refs = new Map<number, Variable[]>();
   private nextRef = 100;
 
+  /** A fake core halted at a breakpoint in `step_b`. */
   constructor() {
     super();
     this.registers.set(15, 0x978n);
@@ -65,11 +90,17 @@ export class FakeDebugger extends EventTarget {
     if (halted && this.state !== 'halted') throw Object.assign(new Error('needs a halted core'), { kind: 'not-halted' });
   }
 
+  /** As {@link index!Debugger.start}; does nothing (events fire synchronously). */
   start() {}
+  /** As {@link index!Debugger.dispose}; does nothing. */
   dispose() {}
+  /** As {@link index!Debugger.refresh}. */
   async refresh() { return this.state; }
+  /** As {@link index!Debugger.continue}: the fake core runs until {@link FakeDebugger.hit}. */
   async continue() { this.calls.push('continue'); this.resume(); }
+  /** As {@link index!Debugger.pause}. */
   async pause() { this.calls.push('pause'); this.halt('Request', 0x900n); return this.lastStop!; }
+  /** As {@link index!Debugger.step}: every mode moves one line down. */
   async step(mode: SteppingMode) {
     this.calls.push(`step ${mode}`);
     this.need();
@@ -80,8 +111,11 @@ export class FakeDebugger extends EventTarget {
     this.halt('Step', pc);
     return { pc, warning: null };
   }
+  /** As {@link index!Debugger.reset}. */
   async reset() { this.calls.push('reset'); this.resume(); }
+  /** As {@link index!Debugger.resetAndHalt}. */
   async resetAndHalt() { this.calls.push('resetAndHalt'); this.epoch++; this.halt('Request', 0x7c0n); return this.lastStop!; }
+  /** As {@link index!Debugger.enableVectorCatch}; only recorded. */
   async enableVectorCatch(c: Wire.WireVectorCatchCondition) { this.calls.push(`catch ${c}`); }
 
   /** Simulate the firmware hitting a breakpoint (or any halt) while running. */
@@ -92,11 +126,14 @@ export class FakeDebugger extends EventTarget {
     this.halt({ Breakpoint: 'Hardware' }, pc);
   }
 
+  /** As {@link index!Debugger.registerTable}: R0–R15, XPSR and S0 of a Cortex-M. */
   async registerTable() { return REGS; }
+  /** As {@link index!Debugger.readRegisters}. */
   async readRegisters(): Promise<RegisterValue[]> {
     this.need();
     return REGS.map((info) => ({ info, value: this.registers.get(info.id) ?? 0n }));
   }
+  /** As {@link index!Debugger.writeRegister}, by exact name or id. */
   async writeRegister(register: string | number, value: bigint) {
     this.need();
     const info = REGS.find((r) => r.id === register || r.name === register);
@@ -104,14 +141,21 @@ export class FakeDebugger extends EventTarget {
     this.calls.push(`writeRegister ${info.name}=${value.toString(16)}`);
     this.registers.set(info.id, value);
   }
+  /** As {@link index!Debugger.readMemory}: each byte is the low byte of its address. */
   async readMemory(address: number | bigint, count: number) { return Uint8Array.from({ length: count }, (_, i) => (Number(address) + i) & 0xff); }
+  /** As {@link index!Debugger.writeMemory}; only recorded. */
   async writeMemory(address: number | bigint, data: Uint8Array) { this.calls.push(`writeMemory ${address.toString(16)} ${data.length}`); }
 
+  /** As {@link index!Debugger.loadDebugInfo}; only recorded (the fake always has debug info). */
   async loadDebugInfo() { this.calls.push('loadDebugInfo'); }
+  /** Whether {@link FakeDebugger.loadSvd} was called, which adds a Peripherals scope. */
   svdLoaded = false;
+  /** As {@link index!Debugger.loadSvd}. */
   async loadSvd() { this.calls.push('loadSvd'); this.svdLoaded = true; }
+  /** As {@link index!Debugger.clearSvd}; does nothing. */
   async clearSvd() {}
 
+  /** As {@link index!Debugger.stackTrace}: an inlined frame, then `step_b`, `step_a` and `main`. */
   async stackTrace(): Promise<Frame[]> {
     this.need();
     const loc = (line: number): SourceLocation => ({ path: SRC, line, column: 1 });
@@ -133,6 +177,7 @@ export class FakeDebugger extends EventTarget {
     return { name, value, type, reference, evaluateName: name, memoryReference: null, namedChildren: null, indexedChildren: null };
   }
 
+  /** As {@link index!Debugger.scopes}. */
   async scopes(frameId: number): Promise<Scope[]> {
     this.need();
     const locals = frameId === 6
@@ -167,6 +212,7 @@ export class FakeDebugger extends EventTarget {
     ];
   }
 
+  /** As {@link index!Debugger.variables}; references from before the last resume are rejected. */
   async variables(reference: number): Promise<Variable[]> {
     this.need();
     const vars = this.refs.get(reference);
@@ -174,6 +220,7 @@ export class FakeDebugger extends EventTarget {
     return vars;
   }
 
+  /** As {@link index!Debugger.evaluate}: knows `COUNTER` and register names. */
   async evaluate(expression: string): Promise<Evaluation> {
     this.need();
     if (expression === 'COUNTER') return { value: String(this.counter), type: 'u32', reference: 0, memoryReference: '0x20000000' };
@@ -182,6 +229,7 @@ export class FakeDebugger extends EventTarget {
     return { value: `<invalid expression "${expression}">`, type: null, reference: 0, memoryReference: null };
   }
 
+  /** As {@link index!Debugger.setVariable}: writing `COUNTER` or `n` changes the program state. */
   async setVariable(variable: Pick<Variable, 'name' | 'parent'>, value: string): Promise<Evaluation> {
     this.need();
     this.calls.push(`setVariable ${variable.name}=${value}`);
@@ -190,8 +238,10 @@ export class FakeDebugger extends EventTarget {
     return { value, type: null, reference: 0, memoryReference: null };
   }
 
-  // Breakpoints, source and disassembly (used from slice 5 on).
+  // Breakpoints, source and disassembly.
+  /** As {@link index!Debugger.breakpoints}. */
   breakpoints(): Breakpoint[] { return this.bps; }
+  /** As {@link index!Debugger.setSourceBreakpoints}: line 1 has no code, so it stays unverified. */
   async setSourceBreakpoints(path: string, specs: { line: number; column?: number }[]): Promise<Breakpoint[]> {
     this.calls.push(`setSourceBreakpoints ${path} ${specs.map((s) => s.line).join(',')}`);
     this.bps = this.bps.filter((b) => b.kind !== 'source' || b.path !== path);
@@ -204,6 +254,7 @@ export class FakeDebugger extends EventTarget {
     this.emit('breakpoints', this.bps);
     return placed;
   }
+  /** As {@link index!Debugger.setInstructionBreakpoints}. */
   async setInstructionBreakpoints(addresses: (number | bigint)[]): Promise<Breakpoint[]> {
     this.calls.push(`setInstructionBreakpoints ${addresses.map((a) => a.toString(16)).join(',')}`);
     this.bps = this.bps.filter((b) => b.kind !== 'instruction');
@@ -212,9 +263,13 @@ export class FakeDebugger extends EventTarget {
     this.emit('breakpoints', this.bps);
     return placed;
   }
+  /** As {@link index!Debugger.clearBreakpoints}. */
   async clearBreakpoints() { this.calls.push('clearBreakpoints'); this.bps = []; this.emit('breakpoints', []); }
+  /** As {@link index!Debugger.reapplyBreakpoints}. */
   async reapplyBreakpoints() { return this.bps; }
+  /** As {@link index!Debugger.resolveSourceLocations}. */
   async resolveSourceLocations(addresses: (number | bigint)[]) { return addresses.map((a) => ({ path: SRC, line: 30 + (Number(a) % 50), column: 1 })); }
+  /** As {@link index!Debugger.disassemble}: alternating Thumb instructions, 2 bytes apart. */
   async disassemble(address: number | bigint, count: number, instructionOffset = 0): Promise<Instruction[]> {
     const start = BigInt(address) + BigInt(instructionOffset * 2);
     return Array.from({ length: count }, (_, i) => ({ address: start + BigInt(2 * i), text: i % 2 ? 'mov r7, sp' : 'push {r7, lr}', bytes: '80b5', source: { path: SRC, line: 54 + i, column: 1 } }));

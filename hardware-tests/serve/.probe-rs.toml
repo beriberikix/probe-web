@@ -1,0 +1,8 @@
+# probe-rs serve configuration for local development and the hardware tests.
+# Run `probe-rs serve` from this directory; the apps and examples default to this token.
+# It listens on localhost only. Pick your own token before exposing it anywhere else.
+[server]
+address = "127.0.0.1"
+port = 3000
+cycle_power = false
+users = [{ name = "probe-web", token = "probe-web", access = "all" }]

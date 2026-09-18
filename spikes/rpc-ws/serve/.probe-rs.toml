@@ -1,5 +1,0 @@
-[server]
-address = "127.0.0.1"
-port = 3000
-cycle_power = false
-users = [{ name = "spike", token = "spike", access = "all" }]

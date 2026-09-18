@@ -15,16 +15,23 @@
 
 /** Settings these files can prefill. Matches the workbench's own stored settings. */
 export interface ImportedConfig {
+  /** probe-rs chip name. */
   chip?: string;
+  /** Probe serial number, for matching as {@link OpenSessionOptions.probe} does. */
   probe?: string;
+  /** Debug protocol. */
   protocol?: 'Swd' | 'Jtag';
+  /** Probe speed in kHz. */
   speed?: number;
+  /** Whether to hold the target in reset while attaching. */
   connectUnderReset?: boolean;
   /** `[remote]` in Embed.toml: a `probe-rs serve` to talk to instead of WebUSB. */
   url?: string;
+  /** The access token for that server. */
   token?: string;
   /** Paths named by the file. The browser cannot open them, but it can say what to pick. */
   programBinary?: string;
+  /** Path of the SVD file the configuration names (see `programBinary`). */
   svdFile?: string;
   /** Names of the settings that were actually recognised, for reporting back. */
   applied: string[];

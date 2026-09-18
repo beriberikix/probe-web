@@ -18,9 +18,15 @@ interface Node {
  * `<probe-peripherals>`: peripherals from a CMSIS-SVD file (loaded through the
  * debugger; the server parses it and reads registers live), as a tree of
  * peripherals → registers → fields, with a name filter. Refreshed at each stop.
+ *
+ * Load the SVD with the file input, or call {@link ProbePeripherals.loadSvd} — for
+ * example with an SVD from `<probe-target-picker>`'s `svds-found` event.
+ *
+ * Fires no events.
  */
 @customElement('probe-peripherals')
 export class ProbePeripherals extends DebuggerElement {
+  /** @internal */
   static styles = [debugStyles, css`
     .node { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; padding: 1px 0; }
     .twisty { width: 1em; cursor: pointer; user-select: none; color: #555; }
@@ -38,7 +44,10 @@ export class ProbePeripherals extends DebuggerElement {
   protected onAttached() { if (this.svdName && this.debugger?.state === 'halted') void this.refresh(); }
   protected onStopped() { if (this.svdName) void this.refresh(); }
 
-  /** Load an SVD (bytes of the .svd/.xml file) and show its peripherals. */
+  /**
+   * Load an SVD (bytes of the .svd/.xml file) into the debugger and show its peripherals.
+   * `name` is shown in the panel. Errors are shown in the panel rather than thrown.
+   */
   async loadSvd(bytes: Uint8Array, name: string) {
     const d = this.debugger;
     if (!d) return;
@@ -65,6 +74,7 @@ export class ProbePeripherals extends DebuggerElement {
     for (const c of n.children) if (c.reference && this.open.has(c.path)) await this.load(c, generation);
   }
 
+  /** Re-read the Peripherals scope now (the core must be halted). */
   async refresh() {
     const d = this.debugger;
     if (!d || d.state !== 'halted') return;

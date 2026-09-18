@@ -7,13 +7,18 @@ const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
 
 /**
  * `<probe-callstack>`: the stack at the current stop. Inlined frames are shown
- * but the first real (non-inlined) frame is selected by default. Selecting a
- * frame dispatches `frame-selected` (detail: Frame).
+ * but the first real (non-inlined) frame is selected by default.
+ *
+ * @fires frame-selected - A frame was selected, by a click or automatically at each stop.
+ *   `detail` is the `Frame`; set it as `<probe-variables>`' `frame` to show that
+ *   frame's variables.
  */
 @customElement('probe-callstack')
 export class ProbeCallstack extends LitElement {
+  /** @internal */
   static styles = debugStyles;
 
+  /** The debugger whose stack is shown. */
   @property({ attribute: false }) debugger: Debugger | null = null;
   @state() private frames: Frame[] = [];
   @state() private selected: number | null = null;
@@ -47,6 +52,7 @@ export class ProbeCallstack extends LitElement {
     if (d.state === 'halted') void this.refresh();
   }
 
+  /** Read the stack now (the core must be halted) and select its first non-inlined frame. */
   async refresh() {
     const d = this.debugger;
     if (!d) return;
@@ -66,6 +72,7 @@ export class ProbeCallstack extends LitElement {
     return this.frames.find((f) => f.id === this.selected) ?? null;
   }
 
+  /** Select `frame` and fire `frame-selected`. */
   select(frame: Frame) {
     this.selected = frame.id;
     this.dispatchEvent(new CustomEvent('frame-selected', { detail: frame, bubbles: true, composed: true }));

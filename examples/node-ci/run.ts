@@ -3,7 +3,7 @@
  * over the WebSocket transport (Node 22+ has a global WebSocket).
  *
  *   node --experimental-transform-types run.ts --elf fw.elf --chip nRF9160_xxAA \
- *     [--url ws://127.0.0.1:3000] [--token spike] [--probe j-link] [--protocol Swd] \
+ *     [--url ws://127.0.0.1:3000] [--token probe-web] [--probe j-link] [--protocol Swd] \
  *     [--timeout 20] [--expect "text that must appear"]
  *
  * Exit code: 0 when flash + verify pass, every --expect string was seen, and
@@ -16,7 +16,7 @@ import { Client, elfHasRtt, type MonitorEvent, type Wire } from '@probe-web/clie
 const { values: args } = parseArgs({
   options: {
     url: { type: 'string', default: 'ws://127.0.0.1:3000' },
-    token: { type: 'string', default: '' },
+    token: { type: 'string', default: process.env.PROBE_RS_TOKEN ?? 'probe-web' },
     elf: { type: 'string' },
     chip: { type: 'string' },
     probe: { type: 'string' },

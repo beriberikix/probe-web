@@ -1,0 +1,18 @@
+[package]
+name = "probe-web-wire-gen"
+version = "0.0.0"
+description = "Generates packages/client/src/wire.ts from probe-rs-rpc's postcard-schema type model"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[dependencies]
+probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
+postcard-rpc = { version = "0.12", features = ["use-std"] }
+postcard-schema = { version = "0.2", features = ["use-std", "derive"] }
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = "1"

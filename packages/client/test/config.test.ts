@@ -60,9 +60,9 @@ timeout = 3000
   });
 
   it('maps [remote] onto the WebSocket transport', () => {
-    const c = fromEmbedToml(`[default.remote]\nhost = "192.168.1.5:3000"\ntoken = "spike"\n`);
+    const c = fromEmbedToml(`[default.remote]\nhost = "192.168.1.5:3000"\ntoken = "s3cret"\n`);
     expect(c.url).toBe('ws://192.168.1.5:3000');
-    expect(c.token).toBe('spike');
+    expect(c.token).toBe('s3cret');
     // An explicit scheme is left alone.
     expect(fromEmbedToml(`[default.remote]\nhost = "wss://lab:3000"\n`).url).toBe('wss://lab:3000');
   });

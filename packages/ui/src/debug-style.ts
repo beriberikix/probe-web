@@ -19,7 +19,9 @@ export const debugStyles = css`
   input.edit { font: inherit; font-family: ui-monospace, monospace; font-size: 12px; width: 12em; }
 `;
 
+/** The message of a thrown value, for showing in a panel. */
 export const errorText = (e: unknown) => (e as Error)?.message ?? String(e);
+/** `0x`-prefixed hex, zero-padded to `width` digits. */
 export const hex = (v: bigint | number, width = 8) => '0x' + v.toString(16).padStart(width, '0');
 
 /** Parse user input for a numeric register value: 0x…, 0b…, or decimal. */

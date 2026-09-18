@@ -27,6 +27,11 @@ export function matchSourcePath(path: string, candidates: Iterable<string>): str
   return best;
 }
 
+/**
+ * Finds source text for the DWARF paths probe-rs reports. Implemented by
+ * {@link DirectorySourceProvider} and {@link UrlSourceProvider}; implement it yourself to serve
+ * sources from anywhere else.
+ */
 export interface SourceProvider {
   /** Source text for a DWARF path, or `null` if this provider has no such file. */
   read(path: string): Promise<string | null>;
@@ -44,16 +49,19 @@ export class UrlSourceProvider implements SourceProvider {
   private readonly prefix: string;
   private readonly cache = new Map<string, Promise<string | null>>();
 
+  /** `base`: the URL the sources are served under. `prefix`: the build-time directory it corresponds to. */
   constructor(opts: { base: string; prefix: string }) {
     this.base = opts.base.endsWith('/') ? opts.base : opts.base + '/';
     this.prefix = norm(opts.prefix).replace(/\/?$/, '/');
   }
 
+  /** The path relative to `prefix`, or `null` if `path` is outside it. */
   async resolve(path: string): Promise<string | null> {
     const p = norm(path);
     return p.startsWith(this.prefix) ? p.slice(this.prefix.length) : null;
   }
 
+  /** Fetch the file (once; results are cached). `null` if it is outside `prefix` or the fetch fails. */
   read(path: string): Promise<string | null> {
     let hit = this.cache.get(path);
     if (!hit) {
@@ -70,7 +78,9 @@ export class UrlSourceProvider implements SourceProvider {
 
 /** The parts of the File System Access directory handle API used here. */
 export interface DirectoryHandleLike {
+  /** The directory's name. */
   name: string;
+  /** Its entries: files and subdirectories (as handles themselves). */
   values(): AsyncIterable<{ kind: 'file' | 'directory'; name: string } & Record<string, unknown>>;
 }
 
@@ -83,13 +93,16 @@ export class DirectorySourceProvider implements SourceProvider {
   private readonly root: DirectoryHandleLike;
   private readonly maxFiles: number;
   private index: Promise<Map<string, { getFile(): Promise<{ text(): Promise<string> }> }>> | null = null;
+  /** Directory names never indexed (dot-directories are skipped as well). */
   static readonly SKIP = new Set(['target', 'node_modules', '.git']);
 
+  /** `maxFiles` caps how many files are indexed (default 20 000), so picking a huge tree stays cheap. */
   constructor(root: DirectoryHandleLike, opts: { maxFiles?: number } = {}) {
     this.root = root;
     this.maxFiles = opts.maxFiles ?? 20_000;
   }
 
+  /** Forget the index; the tree is walked again on the next lookup. */
   reindex(): void {
     this.index = null;
   }
@@ -116,10 +129,12 @@ export class DirectorySourceProvider implements SourceProvider {
     return this.index;
   }
 
+  /** The workspace-relative file `path` maps to (see {@link matchSourcePath}), or `null`. */
   async resolve(path: string): Promise<string | null> {
     return matchSourcePath(path, (await this.build()).keys());
   }
 
+  /** The text of the file `path` maps to, or `null` if none matches. */
   async read(path: string): Promise<string | null> {
     const files = await this.build();
     const rel = matchSourcePath(path, files.keys());

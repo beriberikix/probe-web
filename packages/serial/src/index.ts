@@ -1,29 +1,64 @@
 /**
- * @probe-web/serial — a WebSerial console for boards whose output goes to a
- * UART bridge (ESP devkits, Nucleo VCP, J-Link VCOM) rather than RTT. Not
- * probe-rs; it sits next to the probe so a page can show both.
+ * A WebSerial console for boards whose output goes to a UART bridge (ESP
+ * devkits, Nucleo VCP, J-Link VCOM) rather than RTT. Not probe-rs; it sits
+ * next to the probe so a page can show both.
  *
- * Chromium-only (WebSerial). `requestPort()` needs a user gesture; granted
- * ports come back from `grantedPorts()` on later visits.
+ * Chromium-only (WebSerial). {@link requestPort} needs a user gesture; granted
+ * ports come back from {@link grantedPorts} on later visits.
+ *
+ * @example
+ * ```ts
+ * import { LineDecoder, SerialConnection, requestPort } from '@probe-web/serial';
+ *
+ * button.onclick = async () => {
+ *   const port = await requestPort(); // user gesture: opens the chooser
+ *   const lines = new LineDecoder();
+ *   const conn = await SerialConnection.open(port, { baudRate: 115200 }, (bytes) => {
+ *     for (const line of lines.push(bytes)) console.log(line);
+ *   });
+ *   await conn.write('help', 'crlf');
+ *   conn.closed.then((reason) => console.log(`serial closed: ${reason}`));
+ * };
+ * ```
+ *
+ * @packageDocumentation
  */
 
-/** The subset of the WebSerial API this package uses (no @types dependency). */
+/** The subset of the WebSerial API this package uses (no `@types` dependency). */
 export interface SerialPortLike {
+  /** Incoming bytes while open; `null` when closed or after a fatal error. */
   readonly readable: ReadableStream<Uint8Array> | null;
+  /** Outgoing bytes while open; `null` when closed. */
   readonly writable: WritableStream<Uint8Array> | null;
+  /** Open the port with these line settings. */
   open(options: SerialOpenOptions): Promise<void>;
+  /** Close the port. */
   close(): Promise<void>;
+  /** Set control lines (DTR, RTS) or send a break. */
   setSignals?(signals: { dataTerminalReady?: boolean; requestToSend?: boolean; break?: boolean }): Promise<void>;
+  /** USB ids of the bridge, when it is a USB device. */
   getInfo?(): { usbVendorId?: number; usbProductId?: number };
+  /** Fires `disconnect` when the device is unplugged. */
   addEventListener?(type: 'disconnect', listener: () => void): void;
 }
 
+/**
+ * Line settings for {@link SerialConnection.open}, as WebSerial's
+ * `SerialPort.open()` takes them. Unset fields default to 8N1 without flow
+ * control.
+ */
 export interface SerialOpenOptions {
+  /** Bits per second, e.g. one of {@link BAUD_RATES}. */
   baudRate: number;
+  /** Data bits per frame (default 8). */
   dataBits?: 7 | 8;
+  /** Stop bits per frame (default 1). */
   stopBits?: 1 | 2;
+  /** Parity (default `none`). */
   parity?: 'none' | 'even' | 'odd';
+  /** `hardware` uses RTS/CTS (default `none`). */
   flowControl?: 'none' | 'hardware';
+  /** Size of the browser's read and write buffers, in bytes (browser default if unset). */
   bufferSize?: number;
 }
 
@@ -36,6 +71,7 @@ interface SerialLike {
 
 const serial = (): SerialLike | undefined => (globalThis.navigator as { serial?: SerialLike } | undefined)?.serial;
 
+/** Common baud rates, for a rate picker. */
 export const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 2000000] as const;
 
 /** USB-UART bridges and probe VCOMs commonly found on dev boards. */
@@ -52,18 +88,23 @@ export const SERIAL_BRIDGE_FILTERS = [
   { usbVendorId: 0x2e8a }, // Raspberry Pi (debugprobe, RP2040 CDC)
 ];
 
+/** True when the browser exposes WebSerial (`navigator.serial`); Chromium-based desktop browsers only. */
 export function hasWebSerial(): boolean {
   return !!serial();
 }
 
-/** Open the browser's port chooser (needs a user gesture). `any` drops the vendor filters. */
+/**
+ * Open the browser's port chooser (needs a user gesture) and resolve with the
+ * port the user picks. The chooser lists {@link SERIAL_BRIDGE_FILTERS}; `any`
+ * drops those filters. Rejects if WebSerial is missing or the user cancels.
+ */
 export async function requestPort(opts: { any?: boolean } = {}): Promise<SerialPortLike> {
   const s = serial();
   if (!s) throw new Error('WebSerial is not available in this browser');
   return s.requestPort(opts.any ? {} : { filters: SERIAL_BRIDGE_FILTERS });
 }
 
-/** Ports this origin was granted before. */
+/** Ports this origin was granted before; empty without WebSerial. No user gesture needed. */
 export async function grantedPorts(): Promise<SerialPortLike[]> {
   return serial()?.getPorts() ?? [];
 }
@@ -112,6 +153,7 @@ export class LineDecoder {
   }
 }
 
+/** What {@link SerialConnection.write} appends to text: nothing, `\n`, `\r`, or `\r\n`. */
 export type LineEnding = 'none' | 'lf' | 'cr' | 'crlf';
 const ENDINGS: Record<LineEnding, string> = { none: '', lf: '\n', cr: '\r', crlf: '\r\n' };
 
@@ -121,12 +163,16 @@ const ENDINGS: Record<LineEnding, string> = { none: '', lf: '\n', cr: '\r', crlf
  * (`closed` resolves with the reason).
  */
 export class SerialConnection {
+  /** The underlying port. */
   readonly port: SerialPortLike;
+  /** Resolves once the connection has ended, with the reason (`closed`, `port closed`, `device disconnected`, `read error: …`). */
   readonly closed: Promise<string>;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private resolveClosed!: (reason: string) => void;
   private closing = false;
+  /** Bytes received so far. */
   bytesIn = 0;
+  /** Bytes written so far. */
   bytesOut = 0;
 
   private constructor(port: SerialPortLike) {
@@ -134,6 +180,10 @@ export class SerialConnection {
     this.closed = new Promise((r) => (this.resolveClosed = r));
   }
 
+  /**
+   * Open `port` with `options` (8N1, no flow control unless set) and start
+   * reading; each received chunk is passed to `onData`.
+   */
   static async open(port: SerialPortLike, options: SerialOpenOptions, onData: (bytes: Uint8Array) => void): Promise<SerialConnection> {
     await port.open({ dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none', ...options });
     const c = new SerialConnection(port);
@@ -181,6 +231,7 @@ export class SerialConnection {
     }
   }
 
+  /** Set the DTR/RTS control lines. Throws if the port does not support control signals. */
   async setSignals(signals: { dataTerminalReady?: boolean; requestToSend?: boolean }): Promise<void> {
     if (!this.port.setSignals) throw new Error('this port does not support control signals');
     await this.port.setSignals(signals);
@@ -197,6 +248,7 @@ export class SerialConnection {
     await this.setSignals({ dataTerminalReady: false, requestToSend: false });
   }
 
+  /** Stop reading and close the port; {@link SerialConnection.closed} resolves with `closed`. */
   async close(): Promise<void> {
     if (this.closing) return;
     this.closing = true;

@@ -12,7 +12,7 @@ import { ProbeDebugAdapter } from '@probe-web/dap';
 const { values: args } = parseArgs({
   options: {
     url: { type: 'string', default: 'ws://127.0.0.1:3000' },
-    token: { type: 'string', default: 'spike' },
+    token: { type: 'string', default: process.env.PROBE_RS_TOKEN ?? 'probe-web' },
     elf: { type: 'string' },
     chip: { type: 'string' },
     probe: { type: 'string' },

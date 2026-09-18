@@ -30,11 +30,14 @@ const DEFAULT_OPEN = new Set(['Variables']);
  * Registers, Peripherals with an SVD), children loaded on expand, expansion
  * kept across stops, leaf values editable (double-click), and watch
  * expressions (probe-rs evaluates names, not arbitrary expressions).
- * Set `frame` (e.g. from `<probe-callstack>`'s `frame-selected`); without it
- * the first non-inlined frame of each stop is used.
+ * Set {@link ProbeVariables.frame} (e.g. from `<probe-callstack>`'s
+ * `frame-selected`); without it the first non-inlined frame of each stop is used.
+ *
+ * Fires no events.
  */
 @customElement('probe-variables')
 export class ProbeVariables extends LitElement {
+  /** @internal */
   static styles = [debugStyles, css`
     .node { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; white-space: nowrap; }
     .twisty { width: 1em; display: inline-block; cursor: pointer; user-select: none; color: #555; }
@@ -45,7 +48,12 @@ export class ProbeVariables extends LitElement {
     .watch-add { font: inherit; width: 14em; }
   `];
 
+  /** The debugger whose variables are shown. */
   @property({ attribute: false }) debugger: Debugger | null = null;
+  /**
+   * The frame to show; reset to `null` at each stop, which means the first non-inlined
+   * frame. Setting it while halted refreshes the view.
+   */
   @property({ attribute: false }) frame: Frame | null = null;
   @state() private scopes: Node[] = [];
   @state() private watches: Watch[] = [];

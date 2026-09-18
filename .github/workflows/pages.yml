@@ -1,4 +1,4 @@
-name: Deploy the apps to GitHub Pages
+name: Deploy the docs and apps to GitHub Pages
 
 on:
   push:
@@ -40,8 +40,8 @@ jobs:
       # toolchain, which is a much larger install.
       - run: ./scripts/build-firmware.sh
 
-      # All apps under one origin, because WebUSB grants are per origin. A project site is
-      # served from /<repo>/, so that is the base every asset URL is built against.
+      # The docs and all apps under one origin, because WebUSB grants are per origin. A project
+      # site is served from /<repo>/, so that is the base every URL is built against.
       - name: Build the site
         run: ./scripts/build-site.sh "/${{ github.event.repository.name }}/"
 

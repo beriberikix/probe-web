@@ -5,8 +5,8 @@
  * It has the shape VS Code web's `DebugAdapterInlineImplementation` expects:
  * `handleMessage(request)` in, `onDidSendMessage(listener)` out. Request
  * mapping follows probe-rs's own DAP server (probe-rs-tools
- * `dap_server/debug_adapter/dap/adapter.rs`). One thread per debugged core
- * (currently one core, thread id 1).
+ * `dap_server/debug_adapter/dap/adapter.rs`). The adapter debugs a single
+ * core, reported as thread id 1.
  */
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
 import type { Breakpoint, DebugOutput, Debugger, SourceProvider, StoppedDetail } from '@probe-web/client';
@@ -26,15 +26,19 @@ export interface ProbeLaunchArguments extends DP.LaunchRequestArguments {
    * over WebUSB (the probe must already be granted to the page; no disassembly).
    */
   transport?: 'websocket' | 'webusb';
-  /** `probe-rs serve` WebSocket URL and token. */
+  /** `probe-rs serve` WebSocket URL; required for the `websocket` transport. */
   url?: string;
+  /** Token `probe-rs serve` was started with. */
   token?: string;
   /** Probe to use: substring of its identifier or serial number (first probe if omitted). */
   probe?: string;
+  /** Target chip name as probe-rs knows it, e.g. `MCXA153`. */
   chip?: string;
+  /** Debug wire protocol (default `Swd`). */
   protocol?: 'Swd' | 'Jtag';
   /** Firmware ELF: bytes, or a URL to fetch. Loaded for debug info; flashed on `launch` unless `flash` is false. */
   program?: Uint8Array | string;
+  /** Set to `false` to `launch` without flashing `program` (default true). */
   flash?: boolean;
   /** Image format for flashing: `target` (default) uses the chip's own default, e.g. `idf` on ESP32 chips, `elf` on most others. */
   format?: 'target' | 'elf' | 'hex' | 'bin' | 'uf2' | 'idf';
@@ -43,7 +47,7 @@ export interface ProbeLaunchArguments extends DP.LaunchRequestArguments {
   /** Show RTT output as DAP `output` events (default true when the program links RTT). */
   rtt?: boolean;
   /**
-   * Per-channel RTT configuration, as `probe-rs`'s own `launch.json` has.
+   * Per-channel RTT configuration (`channelNumber`, `dataFormat`), as `probe-rs`'s own `launch.json` has.
    *
    * Channels default to `String`, so a firmware writing samples to one has to say so —
    * otherwise its bytes are decoded as text and land in the console as noise.
@@ -53,23 +57,28 @@ export interface ProbeLaunchArguments extends DP.LaunchRequestArguments {
   stopOnEntry?: boolean;
 }
 
+/** What an {@link AdapterOptions.connect} function returns. */
 export interface ConnectResult {
+  /** The debugger the adapter drives; it takes ownership and disposes it on disconnect. */
   debugger: DebuggerLike;
   /** Release the connection (called on disconnect). */
   close?: () => void | Promise<void>;
 }
 
+/** Options for {@link ProbeDebugAdapter}. */
 export interface AdapterOptions {
   /**
-   * Create the debugger for `launch` / `attach`. Defaults to connecting to
-   * `probe-rs serve` with `@probe-web/client` (see `connectProbeRs`).
+   * Create the debugger for `launch` / `attach` from the request's arguments.
+   * Defaults to {@link connectProbeRs}. Supply your own to reuse an existing
+   * session or to test against a fake debugger.
    */
   connect?: (args: ProbeLaunchArguments, kind: 'launch' | 'attach') => Promise<ConnectResult>;
   /** Serves `source` requests (source text for DWARF paths). */
   sources?: SourceProvider;
 }
 
-type Listener = (message: DP.ProtocolMessage) => void;
+/** Receives each DAP response or event the adapter sends; see {@link ProbeDebugAdapter.onDidSendMessage}. */
+export type Listener = (message: DP.ProtocolMessage) => void;
 
 const THREAD = 1;
 const hex = (v: bigint) => '0x' + v.toString(16).padStart(8, '0');
@@ -95,6 +104,21 @@ async function bytesOf(source: Uint8Array | string): Promise<Uint8Array> {
 
 class DapError extends Error {}
 
+/**
+ * An inline Debug Adapter Protocol server for one probe-rs debug session.
+ *
+ * Feed it DAP requests with {@link ProbeDebugAdapter.handleMessage} and listen
+ * for responses and events with {@link ProbeDebugAdapter.onDidSendMessage}; it
+ * has the shape of VS Code web's `DebugAdapterInlineImplementation`. `launch`
+ * and `attach` take {@link ProbeLaunchArguments} and connect through
+ * {@link AdapterOptions.connect}. The usual sequence is `initialize`,
+ * `launch` or `attach`, wait for the `initialized` event, set breakpoints,
+ * then `configurationDone`, which starts the target running (or reports the
+ * stop on entry). Stop and continue events are held back until then.
+ *
+ * Request handlers are the protected `on_<command>` methods; an unknown
+ * command gets a failed response.
+ */
 export class ProbeDebugAdapter {
   private readonly opts: AdapterOptions;
   private listeners: Listener[] = [];
@@ -109,6 +133,7 @@ export class ProbeDebugAdapter {
   private clientLinesStartAt1 = true;
   private clientColumnsStartAt1 = true;
 
+  /** Nothing connects until a `launch` or `attach` request arrives. */
   constructor(options: AdapterOptions = {}) {
     this.opts = options;
   }
@@ -118,17 +143,23 @@ export class ProbeDebugAdapter {
     return this.dbg;
   }
 
+  /** Receive every response and event the adapter sends. Returns a disposable that removes the listener. */
   onDidSendMessage(listener: Listener): { dispose(): void } {
     this.listeners.push(listener);
     return { dispose: () => { this.listeners = this.listeners.filter((l) => l !== listener); } };
   }
 
-  /** Handle one DAP request. Responses and events go to `onDidSendMessage` listeners. */
+  /**
+   * Handle one DAP request. The response, and any events, go to
+   * {@link ProbeDebugAdapter.onDidSendMessage} listeners; messages that are not
+   * requests are ignored.
+   */
   handleMessage(message: DP.ProtocolMessage): void {
     if (message.type !== 'request') return;
     void this.dispatch(message as DP.Request);
   }
 
+  /** Disconnect without a DAP `disconnect` request (e.g. on page unload); the target is left as it is. */
   dispose(): void {
     void this.shutdown();
   }
@@ -184,6 +215,7 @@ export class ProbeDebugAdapter {
 
   // ------------------------------------------------------------ lifecycle
 
+  /** DAP `initialize`: Records the client's line/column base and answers the adapter's capabilities. */
   protected async on_initialize(_r: DP.InitializeRequest, a: DP.InitializeRequestArguments): Promise<DP.Capabilities> {
     this.clientLinesStartAt1 = a.linesStartAt1 !== false;
     this.clientColumnsStartAt1 = a.columnsStartAt1 !== false;
@@ -262,14 +294,17 @@ export class ProbeDebugAdapter {
     this.event('initialized');
   }
 
+  /** DAP `launch`: Connects, flashes (see {@link ProbeLaunchArguments.flash}) and resets the target into a halt. */
   protected async on_launch(_r: DP.LaunchRequest, a: ProbeLaunchArguments) {
     await this.start(a, 'launch');
   }
 
+  /** DAP `attach`: Connects to the target as it is, without flashing or resetting. */
   protected async on_attach(_r: DP.AttachRequest, a: ProbeLaunchArguments) {
     await this.start(a, 'attach');
   }
 
+  /** DAP `configurationDone`: Ends configuration: after `launch`, runs the target or reports the stop on entry; after `attach`, reports the current halt, if any. */
   protected async on_configurationDone() {
     const d = this.d;
     if (this.kind === 'launch') {
@@ -294,6 +329,7 @@ export class ProbeDebugAdapter {
     await close?.();
   }
 
+  /** DAP `disconnect`: Ends the session. After `launch` a halted target is resumed first, unless `terminateDebuggee` is false. */
   protected async on_disconnect(_r: DP.DisconnectRequest, a: DP.DisconnectArguments) {
     if (this.dbg && this.kind === 'launch' && a.terminateDebuggee !== false) {
       // Leave the target running rather than halted mid-way.
@@ -303,6 +339,7 @@ export class ProbeDebugAdapter {
     this.event('terminated');
   }
 
+  /** DAP `terminate`: Ends the session, leaving the target as it is. */
   protected async on_terminate() {
     await this.shutdown();
     this.event('terminated');
@@ -336,7 +373,7 @@ export class ProbeDebugAdapter {
   }
 
   private emitBreakpointChanges(_list: Breakpoint[]) {
-    // Breakpoint responses already carry the state; nothing is changed behind the client's back yet.
+    // Breakpoint responses already carry the state, and nothing changes breakpoints behind the client's back.
   }
 
   // ------------------------------------------------------------ breakpoints
@@ -353,6 +390,7 @@ export class ProbeDebugAdapter {
     };
   }
 
+  /** DAP `setBreakpoints`: Replaces the source breakpoints of one file. */
   protected async on_setBreakpoints(_r: DP.SetBreakpointsRequest, a: DP.SetBreakpointsArguments): Promise<DP.SetBreakpointsResponse['body']> {
     const path = a.source.path;
     if (!path) throw new DapError('setBreakpoints needs source.path');
@@ -365,6 +403,7 @@ export class ProbeDebugAdapter {
     return { breakpoints: placed.map((b) => this.toDapBreakpoint(b)) };
   }
 
+  /** DAP `setInstructionBreakpoints`: Replaces the instruction (address) breakpoints. */
   protected async on_setInstructionBreakpoints(_r: DP.SetInstructionBreakpointsRequest, a: DP.SetInstructionBreakpointsArguments): Promise<DP.SetInstructionBreakpointsResponse['body']> {
     const addresses = a.breakpoints.map((b) => BigInt(b.instructionReference) + BigInt(b.offset ?? 0));
     const placed = await this.d.setInstructionBreakpoints(addresses);
@@ -373,10 +412,12 @@ export class ProbeDebugAdapter {
 
   // ------------------------------------------------------------ threads, stack, variables
 
+  /** DAP `threads`: Reports the single core as thread 1. */
   protected async on_threads(): Promise<DP.ThreadsResponse['body']> {
     return { threads: [{ id: THREAD, name: 'core 0' }] };
   }
 
+  /** DAP `stackTrace`: Stack frames of the halted core; fails while it runs. */
   protected async on_stackTrace(_r: DP.StackTraceRequest, a: DP.StackTraceArguments): Promise<DP.StackTraceResponse['body']> {
     const d = this.d;
     if (d.state !== 'halted') throw new DapError('the core is running');
@@ -397,6 +438,7 @@ export class ProbeDebugAdapter {
     };
   }
 
+  /** DAP `scopes`: Scopes of a stack frame (locals, registers, and peripherals when an SVD is loaded). */
   protected async on_scopes(_r: DP.ScopesRequest, a: DP.ScopesArguments): Promise<DP.ScopesResponse['body']> {
     const scopes = await this.d.scopes(a.frameId);
     return {
@@ -412,6 +454,7 @@ export class ProbeDebugAdapter {
   /** Variables references of the Registers scope, so setVariable can route register writes. */
   private registerScopes = new Set<number>();
 
+  /** DAP `variables`: Children of a scope or variable. */
   protected async on_variables(_r: DP.VariablesRequest, a: DP.VariablesArguments): Promise<DP.VariablesResponse['body']> {
     const vars = await this.d.variables(a.variablesReference, a.filter);
     return {
@@ -431,6 +474,7 @@ export class ProbeDebugAdapter {
     };
   }
 
+  /** DAP `setVariable`: Writes a variable, or a core register when the reference belongs to the Registers scope. */
   protected async on_setVariable(_r: DP.SetVariableRequest, a: DP.SetVariableArguments): Promise<DP.SetVariableResponse['body']> {
     const d = this.d;
     if (this.registerScopes.has(a.variablesReference)) {
@@ -443,11 +487,13 @@ export class ProbeDebugAdapter {
     return { value: r.value, type: r.type ?? undefined, variablesReference: r.reference, memoryReference: r.memoryReference ?? undefined };
   }
 
+  /** DAP `evaluate`: Evaluates an expression in a frame (watch, hover, REPL). */
   protected async on_evaluate(_r: DP.EvaluateRequest, a: DP.EvaluateArguments): Promise<DP.EvaluateResponse['body']> {
     const r = await this.d.evaluate(a.expression, a.frameId);
     return { result: r.value, type: r.type ?? undefined, variablesReference: r.reference, memoryReference: r.memoryReference ?? undefined };
   }
 
+  /** DAP `source`: Source text for a DWARF path, from {@link AdapterOptions.sources}. */
   protected async on_source(_r: DP.SourceRequest, a: DP.SourceArguments): Promise<DP.SourceResponse['body']> {
     const path = a.source?.path;
     const text = path && this.opts.sources ? await this.opts.sources.read(path) : null;
@@ -457,11 +503,13 @@ export class ProbeDebugAdapter {
 
   // ------------------------------------------------------------ run control
 
+  /** DAP `continue`: Resumes the core. */
   protected async on_continue(): Promise<DP.ContinueResponse['body']> {
     await this.d.continue();
     return { allThreadsContinued: true };
   }
 
+  /** DAP `pause`: Halts the core. */
   protected async on_pause() {
     await this.d.pause();
   }
@@ -471,18 +519,23 @@ export class ProbeDebugAdapter {
     if (result.warning) this.event('output', { category: 'console', output: `step: ${result.warning}\n` });
   }
 
+  /** DAP `next`: Steps over (or one instruction, with instruction granularity). */
   protected async on_next(_r: DP.NextRequest, a: DP.NextArguments) { await this.stepWith(a, 'over'); }
+  /** DAP `stepIn`: Steps into (or one instruction, with instruction granularity). */
   protected async on_stepIn(_r: DP.StepInRequest, a: DP.StepInArguments) { await this.stepWith(a, 'into'); }
+  /** DAP `stepOut`: Steps out of the current function (or one instruction, with instruction granularity). */
   protected async on_stepOut(_r: DP.StepOutRequest, a: DP.StepOutArguments) { await this.stepWith(a, 'out'); }
 
   // ------------------------------------------------------------ memory & disassembly
 
+  /** DAP `readMemory`: Reads target memory. */
   protected async on_readMemory(_r: DP.ReadMemoryRequest, a: DP.ReadMemoryArguments): Promise<DP.ReadMemoryResponse['body']> {
     const address = BigInt(a.memoryReference) + BigInt(a.offset ?? 0);
     const bytes = await this.d.readMemory(address, a.count);
     return { address: hex(address), data: toBase64(bytes), unreadableBytes: a.count - bytes.length || undefined };
   }
 
+  /** DAP `writeMemory`: Writes target memory and emits a `memory` event. */
   protected async on_writeMemory(_r: DP.WriteMemoryRequest, a: DP.WriteMemoryArguments): Promise<DP.WriteMemoryResponse['body']> {
     const address = BigInt(a.memoryReference) + BigInt(a.offset ?? 0);
     const data = fromBase64(a.data);
@@ -491,6 +544,7 @@ export class ProbeDebugAdapter {
     return { bytesWritten: data.length };
   }
 
+  /** DAP `disassemble`: Disassembles around an address; not available over the WebUSB transport. */
   protected async on_disassemble(_r: DP.DisassembleRequest, a: DP.DisassembleArguments): Promise<DP.DisassembleResponse['body']> {
     if (this.d.canDisassemble === false) throw new Error('disassembly is not available on this connection (the WebUSB transport has no disassembler)');
     const list = await this.d.disassemble(BigInt(a.memoryReference), a.instructionCount, a.instructionOffset ?? 0, a.offset ?? 0);
@@ -507,8 +561,11 @@ export class ProbeDebugAdapter {
 }
 
 /**
- * The default `connect`: WebSocket to `probe-rs serve`, attach, flash on launch
- * (unless `flash: false`), load debug info and the optional SVD.
+ * The default {@link AdapterOptions.connect}: open a probe-rs session over the
+ * chosen transport (a `probe-rs serve` WebSocket, or WebUSB in this page),
+ * flash `program` on `launch` (unless `flash: false`), then load its debug
+ * info, RTT when the program links it, and the optional SVD. The connection is
+ * closed again if any of those steps fails.
  */
 export async function connectProbeRs(args: ProbeLaunchArguments, kind: 'launch' | 'attach'): Promise<ConnectResult> {
   const { openSession } = await import('@probe-web/client');

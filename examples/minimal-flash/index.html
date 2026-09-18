@@ -1,19 +1,29 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>probe-web: minimal flash</title>
-<button id="go">Authorize + flash</button>
-<pre id="out"></pre>
-<script type="module">
-import { Client } from '@probe-web/client';
-import { requestProbe } from '@probe-web/devices';
-const out = document.getElementById('out');
-document.getElementById('go').onclick = async () => {
-  await requestProbe();                                        // one-time grant, per origin
-  const client = await Client.connect({ kind: 'webusb' });     // probe-rs in this tab
-  const [probe] = await client.listProbes();
-  const session = await client.attach({ probe, chip: 'MCXA153', protocol: 'Swd' });
-  await session.flash({ image: '/firmware/app.bin', format: 'bin', baseAddress: 0x1F000 },
-    (e) => (out.textContent += JSON.stringify(e, (k, v) => typeof v === 'bigint' ? Number(v) : v) + '\n'));
-  out.textContent += 'done\n';
-};
-</script>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>probe-web: minimal flash</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+    label, button { font: inherit; margin-right: 0.5rem; }
+    pre { background: #f4f4f5; padding: 0.75rem; min-height: 8rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Minimal flash</h1>
+  <p>
+    The whole SDK flow in one file: grant a probe, attach, flash with progress, reset and run.
+    Needs Chrome or Edge and a supported board.
+  </p>
+  <label>Board
+    <select id="board">
+      <option value="mcxa153-debug-manifest.json">FRDM-MCXA153</option>
+      <option value="nrf9160-debug-manifest.json">Thingy:91 (nRF9160)</option>
+    </select>
+  </label>
+  <button id="go">Select probe and flash</button>
+  <pre id="out"></pre>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

@@ -39,7 +39,7 @@ jobs:
       - name: Generated wire types are up to date
         run: git diff --exit-code packages/client/src/wire.ts
 
-      - run: npx tsc -b packages/client packages/ui packages/dap packages/devices packages/artifacts packages/serial apps/flash apps/workbench examples/monaco-ide
+      - run: npx tsc -b packages/client packages/ui packages/dap packages/devices packages/artifacts packages/serial apps/flash apps/workbench examples/monaco-ide examples/minimal-flash
       - run: npm test
 
       - name: Browser tests (fake probe, no hardware)
@@ -47,7 +47,9 @@ jobs:
           npx playwright install --with-deps chromium
           npx playwright test
 
-      - name: Build the static site
+      # The site includes the docs: TypeDoc fails on an undocumented export or a broken
+      # {@link}, and VitePress on a dead link.
+      - name: Build the static site and docs
         run: ./scripts/build-site.sh
 
       - uses: actions/upload-artifact@v4
@@ -74,3 +76,5 @@ jobs:
       # they run on the host. The vendor-.FLM corpus test skips unless PROBE_WEB_FLM_DIR
       # is set; the formatter tests, which guard re-loadability, always run.
       - run: cargo test -p probe-web-targets
+      # Checks the generator's serde renames against probe-rs-rpc's real output.
+      - run: cargo test -p probe-web-wire-gen

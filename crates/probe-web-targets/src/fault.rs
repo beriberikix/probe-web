@@ -73,8 +73,8 @@ mod tests {
     use anyhow::Context as _;
 
     /// `flm.rs` adds a plain string context *after* the fault, so the fault is buried.
-    /// It still has to be findable — this is the composition that made an earlier
-    /// `chain()`-based lookup silently return nothing.
+    /// It still has to be findable; a lookup through `chain()` alone returns nothing for
+    /// this composition.
     #[test]
     fn a_fault_survives_later_context() {
         let error = anyhow::Error::from(Fault::NoFlashDevice)

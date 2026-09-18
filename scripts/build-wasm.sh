@@ -17,5 +17,5 @@ cargo build --release --target wasm32-unknown-unknown -p probe-web-local --featu
 wasm-bindgen --target web --out-dir packages/client/worker/fake --out-name probe_web_local \
   target/fake/wasm32-unknown-unknown/release/probe_web_local.wasm
 cp packages/client/worker/local-worker.js packages/client/worker/fake/local-worker.js
-cargo run -q -p spike-schema-ts > packages/client/src/wire.ts
+cargo run -q -p probe-web-wire-gen > packages/client/src/wire.ts
 ls -la packages/client/wasm/*.wasm packages/client/worker/*.wasm packages/client/targets/*.wasm

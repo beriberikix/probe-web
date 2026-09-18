@@ -10,9 +10,15 @@ const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
  * `<probe-disassembly>`: instructions around the PC at each stop (or around a
  * chosen address), with source line markers. Click the gutter to toggle an
  * instruction breakpoint.
+ *
+ * Needs a disassembler on the connection: the WebSocket transport (`probe-rs serve`)
+ * has one, the WebUSB worker does not (see {@link ProbeDisassembly.available}).
+ *
+ * Fires no events.
  */
 @customElement('probe-disassembly')
 export class ProbeDisassembly extends DebuggerElement {
+  /** @internal */
   static styles = [debugStyles, css`
     .gutter { width: 1.2em; cursor: pointer; color: #dc2626; text-align: center; user-select: none; }
     .gutter:hover::after { content: '○'; color: #f87171; }
@@ -22,8 +28,9 @@ export class ProbeDisassembly extends DebuggerElement {
     .bytes { color: #999; }
   `];
 
-  /** Instructions shown before / after the anchor address. */
+  /** Instructions shown before the anchor address (the PC, or the address given to {@link ProbeDisassembly.show}). */
   @property({ type: Number, attribute: 'lines-before' }) linesBefore = 8;
+  /** Instructions shown from the anchor address on. */
   @property({ type: Number, attribute: 'lines-after' }) linesAfter = 16;
   @state() private rows: Instruction[] = [];
   @state() private anchor: bigint | null = null;
@@ -46,6 +53,7 @@ export class ProbeDisassembly extends DebuggerElement {
     return (this.debugger as { canDisassemble?: boolean } | null)?.canDisassemble !== false;
   }
 
+  /** Disassemble around the anchor address now. */
   async refresh() {
     const d = this.debugger;
     if (!d || !this.available) return;

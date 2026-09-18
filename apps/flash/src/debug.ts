@@ -1,7 +1,13 @@
-// Test page for the Phase 3 debugger components.
+// Test harness for the debugger components and the SDK `Debugger`. Development only: it is
+// not part of the deployed site. Each mode logs PASS/FAIL checks and a `<NAME>_RESULT=` line.
 //   ?fake=1                     scripted FakeDebugger (Playwright)
-//   ?auto=1&token=spike&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&line=40
-//                               real target over WebSocket to probe-rs serve: flash, break at src/main.rs:<line>
+//   ?webusb-fake=core|1         the worker's debug endpoints against the fake probe (Playwright)
+//   ?auto=1&token=probe-web&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&line=40
+//                               real target over WebSocket (or transport=webusb): flash, break at
+//                               src/main.rs:<line>, then drive every component
+//   ?check=webusb-src|webusb|webusb-semi|plot&probe=…&chip=…&elf=…
+//                               hardware checks through the WebUSB worker; see below and
+//                               hardware-tests/README.md
 import '@probe-web/ui';
 import { SampleDecoder } from '@probe-web/ui';
 import { Client, openSession, type Debugger } from '@probe-web/client';
@@ -42,7 +48,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shadow = (el: Element) => el.shadowRoot!;
 
 if (qs.get('webusb-fake') === 'core') {
-  // Phase 4: the worker's core endpoints against the fake probe's mocked core (raw calls).
+  // The worker's core endpoints against the fake probe's mocked core (raw calls).
   void (async () => {
     const checks: [string, boolean, string][] = [];
     const check = (name: string, ok: boolean, detail: unknown) => { checks.push([name, ok, JSON.stringify(detail, (_k, v) => (typeof v === 'bigint' ? `0x${v.toString(16)}` : v))]); log(`${ok ? 'PASS' : 'FAIL'} ${name} — ${checks.at(-1)![2]}`); };
@@ -105,9 +111,9 @@ if (qs.get('webusb-fake') === 'core') {
     }
     client.close();
   })();
-} else if (qs.get('spike') === 'webusb-src') {
-  // Phase 4 slice 4: the SDK Debugger over WebUSB — source breakpoints, stack, variables, stepping.
-  //   ?spike=webusb-src&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&src=/@fs/…/cm33-debug/src/main.rs
+} else if (qs.get('check') === 'webusb-src') {
+  // The SDK Debugger over WebUSB: source breakpoints, stack, variables, stepping.
+  //   ?check=webusb-src&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&src=/@fs/…/cm33-debug/src/main.rs
   void (async () => {
     const checks: [string, boolean, string][] = [];
     const check = (name: string, ok: boolean, detail: string) => { checks.push([name, ok, detail]); log(`${ok ? 'PASS' : 'FAIL'} ${name} — ${detail}`); };
@@ -135,7 +141,7 @@ if (qs.get('webusb-fake') === 'core') {
       let t = performance.now();
       await d.loadDebugInfo(elf, elfUrl);
       log(`debug info loaded in ${Math.round(performance.now() - t)} ms`);
-      // Slice 7: RTT output while debugging (rtt/poll_up in the worker).
+      // RTT output while debugging (rtt/poll_up in the worker).
       let rttText = '';
       d.addEventListener('output', (e) => { const o = (e as CustomEvent).detail as { source: string; text: string }; if (o.source === 'rtt') rttText += o.text; });
       await d.enableRtt({ elf });
@@ -161,7 +167,7 @@ if (qs.get('webusb-fake') === 'core') {
       const y = Number(fields.find((v) => v.name === 'y')?.value);
       check('point = {n, 2n} in step_b', !!point && x > 0 && y === 2 * x, `point.x=${x} point.y=${y}; locals ${locals.map((v) => `${v.name}: ${v.type}`).join(', ')}`);
 
-      // Slice 6: evaluate and set_variable (a static in RAM, so the firmware sees the write).
+      // evaluate and set_variable (a static in RAM, so the firmware sees the write).
       const staticsRef = (await d.scopes(real[0].id)).find((sc) => sc.name === 'Static')!.reference;
       const crate = (await d.variables(staticsRef)).find((v) => v.name.includes('debug'));
       const counterVar = crate ? (await d.variables(crate.reference)).find((v) => v.name === 'COUNTER') : undefined;
@@ -213,9 +219,9 @@ if (qs.get('webusb-fake') === 'core') {
       log('SRC_RESULT=FAIL');
     }
   })();
-} else if (qs.get('spike') === 'plot') {
-  // Phase 5 slice 8: raw bytes from a BinaryLE RTT channel, decoded into samples.
-  //   ?spike=plot&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf
+} else if (qs.get('check') === 'plot') {
+  // Raw bytes from a BinaryLE RTT channel, decoded into samples.
+  //   ?check=plot&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf
   void (async () => {
     const checks: [string, boolean, string][] = [];
     const check = (name: string, ok: boolean, detail: string) => { checks.push([name, ok, detail]); log(`${ok ? 'PASS' : 'FAIL'} ${name} — ${detail}`); };
@@ -279,9 +285,9 @@ if (qs.get('webusb-fake') === 'core') {
     }
     log(`PLOT_RESULT=${checks.length && checks.every((c) => c[1]) ? 'PASS' : 'FAIL'} (${checks.filter((c) => c[1]).length}/${checks.length})`);
   })();
-} else if (qs.get('spike') === 'webusb-semi') {
-  // Phase 4 slice 7: semihosting serviced by the worker while the SDK `Debugger` runs the target.
-  //   ?spike=webusb-semi&probe=j-link&chip=nRF9160_xxAA&elf=/firmware/nrf9160-semihosting.elf
+} else if (qs.get('check') === 'webusb-semi') {
+  // Semihosting serviced by the worker while the SDK `Debugger` runs the target.
+  //   ?check=webusb-semi&probe=j-link&chip=nRF9160_xxAA&elf=/firmware/nrf9160-semihosting.elf
   void (async () => {
     const checks: [string, boolean, string][] = [];
     const check = (name: string, ok: boolean, detail: string) => { checks.push([name, ok, detail]); log(`${ok ? 'PASS' : 'FAIL'} ${name} — ${detail}`); };
@@ -338,9 +344,10 @@ if (qs.get('webusb-fake') === 'core') {
       log('SEMI_RESULT=FAIL');
     }
   })();
-} else if (qs.get('spike') === 'webusb') {
-  // Phase 4 spike: DWARF + rich stack trace inside the WebUSB worker (raw calls; no Debugger yet).
-  //   ?spike=webusb&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf
+} else if (qs.get('check') === 'webusb') {
+  // DWARF and the rich stack trace inside the WebUSB worker, through raw calls below the SDK
+  // `Debugger`.
+  //   ?check=webusb&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf
   void (async () => {
     try {
       const client = await Client.connect({ kind: 'webusb' });
@@ -360,7 +367,7 @@ if (qs.get('webusb-fake') === 'core') {
       await sleep(1500);
       await core.halt();
       if (qs.has('core')) {
-        // Slice 2: run control, registers and a hardware breakpoint on `step_b` through the worker.
+        // Run control, registers and a hardware breakpoint on `step_b` through the worker.
         const { elfSymbol } = await import('@probe-web/client');
         const rawCore = session.raw.core(0);
         const meta = (await rawCore.metadata()) as { instruction_set: string };
@@ -391,13 +398,13 @@ if (qs.get('webusb-fake') === 'core') {
       const traces = (await session.raw.richStackTrace(0, 50)) as { cores: { core: number; frames: { function_name: string; id: number; location: { file: string; line: bigint | null } | null; registers: unknown[] }[] }[] };
       const frames = traces.cores[0]?.frames ?? [];
       log(`richStackTrace in ${Math.round(performance.now() - t)} ms: ${frames.map((f) => `${f.function_name}${f.location ? `:${f.location.line}` : ''} #${f.id}`).join(' <- ')}`);
-      // The innermost frames must be named and reach `main`; the fork's older Xtensa unwinder may
-      // continue past the entry trampoline into unnamed ROM frames (tracked for Phase 4 slice 10).
+      // The innermost frames must be named and reach `main`. On Xtensa the unwinder continues
+      // past the entry trampoline into unnamed ROM frames, so only the frames up to `main` count.
       const mainAt = frames.findIndex((f) => /main/.test(f.function_name));
       const ok = mainAt >= 0 && frames.slice(0, mainAt + 1).every((f) => !f.function_name.startsWith('<unknown')) && frames.every((f) => f.id > 0 && f.registers.length > 0);
-      log(`SPIKE_RESULT=${ok ? 'PASS' : 'FAIL'}`);
+      log(`STACK_RESULT=${ok ? 'PASS' : 'FAIL'}`);
       if (qs.has('vars')) {
-        // Slice 3: stop in step_b, then scopes, variables, struct expansion and clear_core.
+        // Stop in step_b, then scopes, variables, struct expansion and clear_core.
         const { elfSymbol } = await import('@probe-web/client');
         const rawCore = session.raw.core(0);
         type V = { name: string; value: string; variables_reference: bigint | number; type_: string | null };
@@ -450,8 +457,8 @@ if (qs.get('webusb-fake') === 'core') {
       await core.run();
       client.close();
     } catch (e) {
-      log(`spike error: ${(e as Error).stack ?? e}`);
-      log('SPIKE_RESULT=FAIL');
+      log(`check error: ${(e as Error).stack ?? e}`);
+      log('STACK_RESULT=FAIL');
     }
   })();
 } else if (qs.has('fake')) {
@@ -516,7 +523,7 @@ if (qs.get('webusb-fake') === 'core') {
       await sleep(1500);
       const pcAfter = shadow(regs).querySelector('tr[data-register="R15"] .value');
       checks.push(['step over (button) updates registers with a change mark', !!pcAfter && pcAfter.classList.contains('changed') && pcAfter.textContent!.trim() !== pcRow, `${pcAfter?.textContent?.trim()}`]);
-      // Slice 5 components.
+      // Breakpoints, disassembly, memory view and peripherals.
       const bpRow = shadow(bps).querySelector(`tr[data-breakpoint="${bp.id}"]`);
       checks.push(['breakpoints panel lists the verified breakpoint with its address', !!bpRow && bpRow.textContent!.includes('●') && bpRow.textContent!.includes(`main.rs:${line}`) && bpRow.textContent!.includes(bp.address!.toString(16)), bpRow?.textContent?.replace(/\s+/g, ' ').trim() ?? 'missing']);
       if (d.canDisassemble) {

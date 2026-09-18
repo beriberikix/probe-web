@@ -17,3 +17,5 @@ export { toIntelHex, groupBytes } from './intel-hex';
 export * from './test-runner.ts';
 export * from './samples.ts';
 export * from './rtt-plot.ts';
+// The base class of the debugger panels, for building your own.
+export { DebuggerElement } from './debugger-element';

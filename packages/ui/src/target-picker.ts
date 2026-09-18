@@ -13,16 +13,24 @@ interface PendingFamily {
  * `<probe-target-picker>`: search the connected server's chip registry,
  * show a chip's cores and memory map, and import extra chip families from
  * probe-rs target YAML, a CMSIS `.pack`, or a `.FLM` flash algorithm
- * (all of which end up at `chips/load`). Fires `chip-selected` with the chip
- * name in `detail`.
+ * (all of which end up at `chips/load`).
  *
  * A pack routinely describes dozens of families, so those are listed for the user to
  * choose from rather than being pushed into the registry wholesale. Any SVDs the pack
  * carries are announced with a `svds-found` event, so a page that has a Peripherals view
  * can offer them without a second download.
+ *
+ * @fires chip-selected - The user picked a chip from the search results. `detail` is the
+ *   chip name (a string), as `client.attach({ chip })` takes it.
+ * @fires family-imported - Chip families were loaded into the registry. `detail` is a
+ *   label for what was imported: the file name, or `Family (file.pack)` for one family
+ *   from a pack.
+ * @fires svds-found - A picked `.pack` contains SVD files. `detail` is an array of
+ *   `{ name, xml }` from `packSvds()`.
  */
 @customElement('probe-target-picker')
 export class ProbeTargetPicker extends LitElement {
+  /** @internal */
   static styles = css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
@@ -38,7 +46,9 @@ export class ProbeTargetPicker extends LitElement {
     .muted { color: #666; } .err { color: #b91c1c; } .ok { color: #15803d; }
   `;
 
+  /** The connection whose chip registry is searched and extended. */
   @property({ attribute: false }) client: Client | null = null;
+  /** The selected chip name; set by {@link ProbeTargetPicker.select}, and settable to preselect one. */
   @property() value = '';
   @state() private families: Wire.ChipFamily[] = [];
   @state() private query = '';
@@ -54,6 +64,7 @@ export class ProbeTargetPicker extends LitElement {
     if (changed.has('client')) void this.refresh();
   }
 
+  /** Re-read the list of chip families from the server. */
   async refresh() {
     this.error = null;
     try {
@@ -76,6 +87,7 @@ export class ProbeTargetPicker extends LitElement {
     return out;
   }
 
+  /** Select `chip`, fire `chip-selected`, and load its cores and memory map for display. */
   async select(chip: string) {
     this.value = chip;
     this.dispatchEvent(new CustomEvent('chip-selected', { detail: chip, bubbles: true, composed: true }));

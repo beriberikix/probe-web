@@ -5,8 +5,8 @@
  * - `--mode debugger`: the SDK `Debugger` services semihosting halts while debugging and reports
  *   the output as `output` events; the exit is reported as a stop.
  * - `--mode monitor`: `session.monitor` with an RTT client that scans all of RAM although the
- *   firmware has no RTT control block (serve used to rescan RAM on every poll and starve
- *   semihosting; follow-up 4).
+ *   firmware has no RTT control block. This checks that serve paces its RAM scans for the
+ *   control block, so they do not starve semihosting.
  *
  *   node semihosting.ts --mode debugger --elf ../../apps/flash/public/firmware/nrf9160-semihosting.elf --chip nRF9160_xxAA --probe j-link
  */
@@ -17,7 +17,7 @@ import { Client } from '@probe-web/client';
 const { values: args } = parseArgs({
   options: {
     url: { type: 'string', default: 'ws://127.0.0.1:3000' },
-    token: { type: 'string', default: 'spike' },
+    token: { type: 'string', default: process.env.PROBE_RS_TOKEN ?? 'probe-web' },
     elf: { type: 'string', default: '../../apps/flash/public/firmware/nrf9160-semihosting.elf' },
     chip: { type: 'string', default: 'nRF9160_xxAA' },
     probe: { type: 'string', default: 'j-link' },

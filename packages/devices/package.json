@@ -1,7 +1,26 @@
 {
   "name": "@probe-web/devices",
   "version": "0.0.0",
+  "description": "WebUSB debug-probe lifecycle: request, list, hotplug and per-tab locking",
+  "keywords": [
+    "probe-rs",
+    "embedded",
+    "webusb",
+    "debug-probe"
+  ],
+  "homepage": "https://beriberikix.github.io/probe-web/api/devices/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beriberikix/probe-web.git",
+    "directory": "packages/devices"
+  },
+  "bugs": "https://github.com/beriberikix/probe-web/issues",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "devDependencies": { "@types/w3c-web-usb": "^1.0.10" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@types/w3c-web-usb": "^1.0.10"
+  }
 }

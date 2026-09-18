@@ -51,10 +51,14 @@ targets.addEventListener('chip-selected', (e) => { $<HTMLInputElement>('chip').v
  * without having a firmware file to hand. Choosing one reloads with `?manifest=`, which is also
  * what a deployment pointing at its own firmware would use.
  */
+// The site root, where the manifests and demo firmware live. The flasher itself is served from
+// the root in development and from <base>/flash/ when deployed next to the docs.
+const siteRoot = new URL(import.meta.env.BASE_URL, location.href);
+
 async function loadDemos() {
   const select = $<HTMLSelectElement>('demo');
   try {
-    const url = new URL('demos.json', document.baseURI);
+    const url = new URL('demos.json', siteRoot);
     const demos = (await (await fetch(url)).json()) as { manifest: string; label: string }[];
     const current = qs.get('manifest') ?? 'flash-manifest.json';
     select.replaceChildren(
@@ -79,9 +83,9 @@ async function loadDemos() {
 
 async function loadManifest() {
   try {
-    // Relative to the page, so the app works under any base path (a project GitHub Pages site
-    // is served from /<repo>/, not /). Image URLs resolve against the manifest's own URL.
-    const manifestUrl = new URL(qs.get('manifest') ?? 'flash-manifest.json', document.baseURI);
+    // Relative to the site root, so the app works under any base path (a project GitHub Pages
+    // site is served from /<repo>/). Image URLs resolve against the manifest's own URL.
+    const manifestUrl = new URL(qs.get('manifest') ?? 'flash-manifest.json', siteRoot);
     manifest = await (await fetch(manifestUrl)).json();
     const imageUrl = (url: string) => new URL(url, manifestUrl).href;
     $('manifest-name').textContent = manifest!.name;

@@ -1,4 +1,4 @@
-//! Debug-target firmware for Phase 3 (breakpoints, stepping, variables).
+//! Debug-target firmware for the debugger checks (breakpoints, stepping, variables).
 //!
 //! The call chain `main → step_a → step_b` runs once per loop iteration, so a
 //! breakpoint in `step_b` stops with a three-frame stack. Values are exact:

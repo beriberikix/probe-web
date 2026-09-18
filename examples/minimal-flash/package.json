@@ -1,3 +1,7 @@
-{ "name": "@probe-web/example-minimal-flash", "private": true, "type": "module",
-  "scripts": { "dev": "vite" },
-  "dependencies": { "@probe-web/client": "*", "@probe-web/devices": "*" } }
+{
+  "name": "@probe-web/example-minimal-flash",
+  "private": true,
+  "type": "module",
+  "description": "The smallest complete flashing page: grant a probe, attach, flash, run",
+  "dependencies": { "@probe-web/client": "*", "@probe-web/devices": "*" }
+}

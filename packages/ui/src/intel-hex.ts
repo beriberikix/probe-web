@@ -7,7 +7,14 @@ function record(type: number, address: number, data: Uint8Array | number[]): str
   return ':' + [...bytes, checksum].map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join('');
 }
 
-/** Encode `data` located at `base` as Intel HEX text (lines joined with `\n`, trailing newline). */
+/**
+ * Encode `data` located at `base` as Intel HEX text (lines joined with `\n`, trailing newline).
+ * Emits an extended linear address record whenever the upper 16 bits change, never lets a
+ * data record cross a 64 KiB boundary, and ends with an EOF record.
+ *
+ * @param base - Address of `data[0]`.
+ * @param recordSize - Maximum data bytes per record.
+ */
 export function toIntelHex(base: number | bigint, data: Uint8Array, recordSize = 16): string {
   const start = Number(base);
   const lines: string[] = [];
@@ -29,7 +36,10 @@ export function toIntelHex(base: number | bigint, data: Uint8Array, recordSize =
   return lines.join('\n') + '\n';
 }
 
-/** Group bytes into words of `size` bytes with the given endianness (a short tail is padded with nulls). */
+/**
+ * Group bytes into words of `size` bytes with the given endianness. A short tail that does
+ * not fill a word becomes `null`.
+ */
 export function groupBytes(bytes: Uint8Array, size: 1 | 2 | 4 | 8, littleEndian: boolean): (bigint | null)[] {
   const out: (bigint | null)[] = [];
   for (let i = 0; i < bytes.length; i += size) {

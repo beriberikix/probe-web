@@ -62,10 +62,9 @@ test('imports a pack in the browser and reports typed faults', async ({ page }) 
 });
 
 test('a chip imported from a pack can actually be attached to', async ({ page }) => {
-  // The regression test for a bug this slice found on hardware: `chips/load` put the
-  // family in the worker's registry, but `Probe::attach` builds its own registry from the
-  // built-in families, so an imported chip was listed and then not attachable
-  // (`ChipNotFound`). Listing it is not the test -- attaching to it is.
+  // `chips/load` puts the family in the worker's registry, and `Probe::attach` must use that
+  // registry rather than only the built-in families, or an imported chip is listed but not
+  // attachable (`ChipNotFound`). Listing it is not the test -- attaching to it is.
   test.slow();
   await page.goto(
     '/?auto=1&transport=webusb&fake=1&pack=/targets/minimal.pack&family=ProbeWebTest&chip=ProbeWebTestChip',

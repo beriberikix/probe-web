@@ -1,7 +1,7 @@
 /**
  * `Debugger`: run control and inspection for one core, on top of probe-rs's
- * RPC (the WebSocket transport to `probe-rs serve`; the WebUSB worker lacks
- * these endpoints). It is the single owner of debug state for its core, so UI
+ * RPC. It works over both transports; only disassembly is missing on the
+ * WebUSB worker (see `canDisassemble`). It is the single owner of debug state for its core, so UI
  * components and the DAP adapter never call the raw endpoints directly:
  *
  * - calls are serialised (the server handles one request at a time anyway, and
@@ -17,9 +17,14 @@ import { armCommon, cortexM, cortexMFp, riscv, v8mMain, v8mSecurity, xtensa, typ
 
 export type { RegisterInfo };
 
-/** The subset of the SDK `Session` the debugger needs (kept structural for tests with fakes). */
+/**
+ * The subset of the SDK {@link Session} the debugger needs. It is structural so tests can pass a
+ * fake; apps pass a real session, via {@link Session.debugger}.
+ */
 export interface DebugSessionLike {
+  /** The attached chip's cores and memory map. */
   targetMetadata(): Promise<Wire.WireSessionTargetMetadata>;
+  /** The raw session RPCs the debugger calls (a subset of `ProbeWebSession`). */
   raw: {
     clearCoreDebugState(core: number): Promise<void>;
     step(core: number, mode: Wire.WireSteppingMode): Promise<unknown>;
@@ -41,10 +46,13 @@ export interface DebugSessionLike {
   supports?(path: keyof Wire.Endpoints): boolean;
   /** The SDK Session's RTT setup (optional so tests can omit it). */
   createRttClient?(opts: { elf?: Uint8Array; channels?: RttChannelConfigInput[] }): Promise<unknown>;
+  /** The core the debugger controls. */
   core(index: number): DebugCoreLike;
 }
 
+/** The subset of the SDK {@link Core} the debugger needs (structural, like {@link DebugSessionLike}). */
 export interface DebugCoreLike {
+  /** The raw core RPCs the debugger calls (a subset of `ProbeWebCore`). */
   raw: {
     status(): Promise<unknown>;
     halt(timeoutMs: number): Promise<unknown>;
@@ -63,22 +71,37 @@ export interface DebugCoreLike {
   };
 }
 
+/**
+ * The core's state as the debugger last saw it. `sleeping` is a core waiting for an interrupt
+ * (`wfi`/`wfe`); `locked-up` an Arm core that faulted inside a fault handler; `unknown` means
+ * not polled yet.
+ */
 export type RunState = 'running' | 'halted' | 'sleeping' | 'locked-up' | 'unknown';
 
+/** Why and where the core stopped: the detail of a `stopped` event and of {@link Debugger.lastStop}. */
 export interface StoppedDetail {
   /** Why the core halted. Debugger-initiated stops report `Request` (pause) or `Step`. */
   reason: Wire.WireHaltReason;
+  /** Program counter at the stop. */
   pc: bigint;
   /** Ids of the breakpoints at `pc` when the stop was a breakpoint. */
   breakpoints: number[];
 }
 
+/**
+ * A breakpoint as the debugger placed it. Returned by {@link Debugger.setSourceBreakpoints} and
+ * {@link Debugger.setInstructionBreakpoints}, and sent with every `breakpoints` event.
+ */
 export interface Breakpoint {
+  /** Unique within the debugger; {@link StoppedDetail.breakpoints} refers to it. */
   id: number;
+  /** `source` (file and line) or `instruction` (address). */
   kind: 'source' | 'instruction';
   /** Source breakpoints: the path as requested (a workspace-relative suffix works) and 1-based line. */
   path: string | null;
+  /** Source breakpoints: the requested 1-based line. */
   line: number | null;
+  /** Source breakpoints: the requested column, if any. */
   column: number | null;
   /** Set on the target (hardware comparator allocated). */
   verified: boolean;
@@ -90,15 +113,23 @@ export interface Breakpoint {
   message: string | null;
 }
 
+/** One disassembled instruction, from {@link Debugger.disassemble}. */
 export interface Instruction {
+  /** Where the instruction is. */
   address: bigint;
+  /** The instruction in assembler syntax, e.g. `push {r7, lr}`. */
   text: string;
+  /** Its encoding as hex, when known. */
   bytes: string | null;
+  /** The source line it was compiled from, with debug info loaded. */
   source: SourceLocation | null;
 }
 
+/** A register and its value, from {@link Debugger.readRegisters}. */
 export interface RegisterValue {
+  /** Which register (name, id, width). */
   info: RegisterInfo;
+  /** Its value, unsigned. */
   value: bigint;
 }
 
@@ -106,52 +137,79 @@ export interface RegisterValue {
 export interface Frame {
   /** Frame handle; also the variables reference of the frame's Registers scope. */
   id: number;
+  /** The function the frame is in. */
   functionName: string;
+  /** Program counter in this frame. */
   pc: bigint;
+  /** Whether the frame is a function inlined into its caller (it shares the caller's registers). */
   inlined: boolean;
+  /** Where in the source the frame is, with debug info loaded. */
   source: SourceLocation | null;
+  /** The {@link Debugger.epoch} the frame belongs to. */
   epoch: number;
 }
 
+/** A place in the source. Map `path` to text with a {@link SourceProvider}. */
 export interface SourceLocation {
   /** Absolute path as recorded in DWARF at build time. */
   path: string;
+  /** 1-based line, when known. */
   line: number | null;
+  /** 1-based column, when known. */
   column: number | null;
 }
 
+/** A group of variables in a frame, from {@link Debugger.scopes}. */
 export interface Scope {
+  /** `Static`, `Peripherals`, `Registers` or `Variables`. */
   name: string;
   /** Pass to `variables()`; 0 means no children. */
   reference: number;
+  /** Whether listing it is slow (statics, peripherals), so a UI should not expand it by default. */
   expensive: boolean;
+  /** DAP presentation hint, e.g. `locals`, `registers`, `statics`. */
   hint: string | null;
 }
 
+/** A variable, field or element, from {@link Debugger.variables}. Valid only until the core resumes. */
 export interface Variable {
+  /** Its name. */
   name: string;
+  /** Its value, formatted by probe-rs. */
   value: string;
+  /** Its type name, when known. */
   type: string | null;
   /** Pass to `variables()` for children; 0 means none. */
   reference: number;
   /** The reference of the scope or variable this was listed under (the key `setVariable` needs). */
   parent: number;
+  /** An expression {@link Debugger.evaluate} accepts for this variable. */
   evaluateName: string | null;
+  /** Its address (e.g. `0x20000000`), when it lives in memory. */
   memoryReference: string | null;
+  /** How many named children it has, for paging with `variables(reference, 'named')`. */
   namedChildren: number | null;
+  /** How many indexed children it has, for paging with `variables(reference, 'indexed')`. */
   indexedChildren: number | null;
 }
 
+/** The result of {@link Debugger.evaluate} or {@link Debugger.setVariable}. */
 export interface Evaluation {
+  /** The value, formatted by probe-rs. */
   value: string;
+  /** Its type name, when known. */
   type: string | null;
+  /** Pass to `variables()` for children; 0 means none. */
   reference: number;
+  /** Its address (e.g. `0x20000000`), when it lives in memory. */
   memoryReference: string | null;
 }
 
 /** Raw bytes from a binary RTT channel (`rtt-bytes` event), for plotting or decoding. */
 export interface RttBytes {
+  /** The RTT up channel number. */
   channel: number;
+  /** The bytes read in one poll. */
   bytes: Uint8Array;
 }
 
@@ -160,6 +218,10 @@ export type DebugOutput =
   | { source: 'rtt'; channel: number; text: string }
   | { source: 'semihosting'; text: string };
 
+/**
+ * How {@link Debugger.step} moves: one machine `instruction`, or by source statement — `over`
+ * calls, `into` them, or `out` of the current function. The statement modes need debug info.
+ */
 export type SteppingMode = 'instruction' | 'over' | 'into' | 'out';
 
 const STEP_MODES: Record<SteppingMode, Wire.WireSteppingMode> = {
@@ -169,13 +231,15 @@ const STEP_MODES: Record<SteppingMode, Wire.WireSteppingMode> = {
   out: 'OutOfStatement',
 };
 
+/** Options for {@link Session.debugger} and the {@link Debugger} constructor. */
 export interface DebuggerOptions {
+  /** Index of the core to debug (default 0). */
   core?: number;
-  /** Poll interval while the core runs (ms). The server sends no halt events. */
+  /** Poll interval while the core runs (ms, default 50). The server sends no halt events. */
   pollRunningMs?: number;
-  /** Poll interval while the core is halted (ms). */
+  /** Poll interval while the core is halted (ms, default 200). */
   pollHaltedMs?: number;
-  /** Timeout for halt requests (ms). */
+  /** Timeout for halt requests (ms, default 500). */
   haltTimeoutMs?: number;
   /**
    * How `step('out')` is performed.
@@ -186,10 +250,11 @@ export interface DebuggerOptions {
    * wrongly and leaves the function's caller behind, and `server` everywhere else.
    */
   stepOut?: StepOutStrategy;
-  /** How long `step('out')` waits for the caller to be reached (ms). */
+  /** How long `step('out')` waits for the caller to be reached (ms, default 5000). */
   stepOutTimeoutMs?: number;
 }
 
+/** How `step('out')` is performed; see {@link DebuggerOptions.stepOut}. */
 export type StepOutStrategy = 'auto' | 'server' | 'caller-breakpoint';
 
 function wireSourceLocation(l: Wire.WireSourceLocation): SourceLocation {
@@ -211,6 +276,7 @@ function runState(s: Wire.WireCoreStatus): RunState {
   return 'unknown';
 }
 
+/** A register value from the wire (`U32`, `U64` or `U128`) as an unsigned `bigint`. */
 export function registerValueToBigInt(v: Wire.WireRegisterValue): bigint {
   if ('U32' in v) return BigInt(v.U32 >>> 0);
   if ('U64' in v) return v.U64;
@@ -246,9 +312,50 @@ export function registerTable(coreType: Wire.WireCoreType, fpu: boolean): Regist
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Run control and inspection for one core: pause, continue, step, reset, breakpoints, stack
+ * traces, scopes and variables, registers and memory, plus RTT and semihosting output while
+ * debugging. Get one from {@link Session.debugger}.
+ *
+ * Calls are serialised, so they can be issued from anywhere without interleaving. Frame ids and
+ * variable references belong to one stop: once the core resumes ({@link Debugger.epoch}
+ * changes) they are rejected with `kind: 'stale-reference'`.
+ *
+ * Events (all `CustomEvent`s; call {@link Debugger.start} to have them fire on their own):
+ * - `stopped` — the core halted; `detail` is a {@link StoppedDetail}.
+ * - `continued` — the core is running again.
+ * - `state` — any change of {@link RunState}; `detail` is the new state.
+ * - `locked-up` — the core locked up.
+ * - `breakpoints` — the breakpoint list changed; `detail` is every {@link Breakpoint}.
+ * - `output` — RTT or semihosting text; `detail` is a {@link DebugOutput}.
+ * - `rtt-bytes` — data from a binary RTT channel; `detail` is an {@link RttBytes}.
+ * - `error` — the status poller failed; `detail` is the error.
+ *
+ * @example
+ * ```ts
+ * const dbg = session.debugger();
+ * dbg.addEventListener('stopped', async () => {
+ *   const [frame] = await dbg.stackTrace();
+ *   const scopes = await dbg.scopes(frame.id);
+ *   const locals = scopes.find((s) => s.name === 'Variables');
+ *   if (locals) console.log(frame.functionName, await dbg.variables(locals.reference));
+ * });
+ * dbg.start();
+ * await dbg.loadDebugInfo(elfBytes, 'app.elf');
+ * await dbg.setSourceBreakpoints('src/main.rs', [{ line: 42 }]);
+ * await dbg.resetAndHalt();
+ * await dbg.continue();
+ * // later
+ * await dbg.step('over');
+ * dbg.dispose();
+ * ```
+ */
 export class Debugger extends EventTarget {
+  /** The session this debugger drives. */
   readonly session: DebugSessionLike;
+  /** Index of the core it controls. */
   readonly coreIndex: number;
+  /** That core. */
   readonly core: DebugCoreLike;
   private readonly opts: Required<Omit<DebuggerOptions, 'core'>>;
   private rttBusy = false;
@@ -271,9 +378,12 @@ export class Debugger extends EventTarget {
   private hwRefs = new Map<bigint, number>();
   private nextBreakpointId = 1;
   private rtt: { channels: number[] | null; flushAfterStop: boolean } | null = null;
+  /** The core's state as last seen (by the poller, or by the debugger's own calls). */
   state: RunState = 'unknown';
+  /** The current stop, or `null` while the core is not halted. */
   lastStop: StoppedDetail | null = null;
 
+  /** Apps normally use {@link Session.debugger}; tests can pass a fake session here. */
   constructor(session: DebugSessionLike, options: DebuggerOptions = {}) {
     super();
     this.session = session;
@@ -376,6 +486,7 @@ export class Debugger extends EventTarget {
     })();
   }
 
+  /** Stop the poller. The debugger does not detach or resume the core. */
   dispose(): void {
     this.disposed = true;
   }
@@ -432,7 +543,11 @@ export class Debugger extends EventTarget {
     });
   }
 
-  /** Step (`instruction` needs no debug info; the others need `loadDebugInfo`). Emits `stopped` with reason `Step`. */
+  /**
+   * Step (`instruction` needs no debug info; the others need `loadDebugInfo`). Emits `stopped` with reason `Step`.
+   * Resolves with the new program counter and, when the step did not go exactly as asked (e.g.
+   * step out timed out before reaching the caller), a `warning` to show the user.
+   */
   step(mode: SteppingMode): Promise<{ pc: bigint; warning: string | null }> {
     return this.exclusive(async () => {
       if (mode === 'out' && (await this.stepOutStrategyUnlocked()) === 'caller-breakpoint') {
@@ -590,6 +705,7 @@ export class Debugger extends EventTarget {
     return this.sourceBreakpoints.size > 0 || this.instructionBreakpoints.length > 0;
   }
 
+  /** Halt the core when it takes this exception (e.g. `HardFault`, `CoreReset`). */
   enableVectorCatch(condition: Wire.WireVectorCatchCondition): Promise<void> {
     return this.exclusive(() => this.core.raw.enableVectorCatch(condition));
   }
@@ -615,6 +731,7 @@ export class Debugger extends EventTarget {
     return this.exclusive(() => this.session.raw.loadSvd(this.coreIndex, svd, name));
   }
 
+  /** Unload the SVD, removing the Peripherals scope. */
   clearSvd(): Promise<void> {
     return this.exclusive(() => this.session.raw.clearSvd(this.coreIndex));
   }
@@ -900,10 +1017,6 @@ export class Debugger extends EventTarget {
   }
 
   /**
-   * Disassemble `count` instructions starting at `address` shifted by `instructionOffset`
-   * instructions (negative looks backwards, as DAP `disassemble` does).
-   */
-  /**
    * Whether this connection can disassemble. `probe-rs serve` can; the WebUSB worker cannot
    * (probe-rs uses capstone, which is C code). Views should show that instead of an error.
    */
@@ -911,6 +1024,11 @@ export class Debugger extends EventTarget {
     return this.session.supports?.('core/disassemble') ?? true;
   }
 
+  /**
+   * Disassemble `count` instructions starting at `address` shifted by `instructionOffset`
+   * instructions (negative looks backwards, as DAP `disassemble` does). Needs `probe-rs serve`:
+   * over WebUSB it rejects with `kind: 'unsupported'` (see {@link Debugger.canDisassemble}).
+   */
   disassemble(address: number | bigint, count: number, instructionOffset = 0, byteOffset = 0): Promise<Instruction[]> {
     if (!this.canDisassemble) {
       return Promise.reject(Object.assign(new Error('disassembly is not available on this connection (the WebUSB transport has no disassembler)'), { kind: 'unsupported' }));
@@ -972,15 +1090,14 @@ export class Debugger extends EventTarget {
           | { kind: 'error'; channel: number; message: string }
         )[];
         for (const o of outputs) {
-          // A BinaryLE channel carries data, not text. Hex is what a console can show, but
+          // A BinaryLE channel carries data, not text. Hex is what a console could show, but
           // it is lossy for anything that wants the values — a plot, say — so the raw
-          // bytes go out as their own event and the hex line is kept for the console.
+          // bytes go out as their own event instead.
           if (o.kind === 'bytes') {
             // Binary channels report bytes only. Rendering them as hex into the same
             // stream as the text channels reads as noise and, worse, interleaves with a
-            // partial text line and corrupts it — which is how this was found: a DAP
-            // check that parses `n=… result=…` lines started losing them once a firmware
-            // gained a second, binary channel.
+            // partial text line and corrupts it, so a consumer parsing text lines would
+            // lose them whenever a firmware also has a binary channel.
             this.emit('rtt-bytes', { channel: o.channel, bytes: Uint8Array.from(o.bytes) } satisfies RttBytes);
             continue;
           }
@@ -1029,6 +1146,7 @@ export class Debugger extends EventTarget {
     return this.exclusive(() => this.core.raw.readBytes(BigInt(address), count));
   }
 
+  /** Write bytes starting at `address`. */
   writeMemory(address: number | bigint, data: Uint8Array): Promise<void> {
     return this.exclusive(() => this.core.raw.writeMemory8(BigInt(address), data));
   }

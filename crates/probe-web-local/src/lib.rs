@@ -3,9 +3,12 @@
 //! `postMessage`. The main thread runs the unmodified RPC client
 //! (`probe-web-core`), so remote and local transports share one client.
 //!
-//! Only a subset of `master`'s endpoints is implemented (flash, RTT/monitor,
-//! memory, core control, chips); the schema report still lists all of them
-//! (see spikes/README.md, "capability negotiation").
+//! It implements nearly every endpoint. Disassembly is the one a user notices
+//! (probe-rs uses capstone, a C library); erase-range, the plain stack trace,
+//! select-probe and clearing the RTT control block are not used by the SDK.
+//! Semihosting is console-only: a browser has no host filesystem. The schema
+//! report advertises exactly what is implemented (`server::LOCAL_ENDPOINT_LIST`),
+//! so the client's capability negotiation reports the rest as unsupported.
 
 mod convert;
 mod core_ops;

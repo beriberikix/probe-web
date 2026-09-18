@@ -2,13 +2,21 @@ import { LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
 import type { Debugger } from '@probe-web/client';
 
-/** Base for components driven by a `Debugger`: subscribes to its events while connected. */
+/**
+ * Base for components driven by a `Debugger`: subscribes to its `stopped`, `continued`
+ * and `breakpoints` events while connected, re-subscribing when
+ * {@link DebuggerElement.debugger} changes, and calls the matching `on…` hook.
+ */
 export abstract class DebuggerElement extends LitElement {
+  /** The debugger to follow (from `session.debugger()`); the panel shows "no debugger" without one. */
   @property({ attribute: false }) debugger: Debugger | null = null;
   private unlisten: (() => void) | null = null;
 
+  /** Called when the core halts. */
   protected onStopped(): void {}
+  /** Called when the core resumes. */
   protected onContinued(): void {}
+  /** Called when the set of breakpoints changes. */
   protected onBreakpoints(): void {}
   /** Called when a debugger is attached (and the core may already be halted). */
   protected onAttached(): void {}

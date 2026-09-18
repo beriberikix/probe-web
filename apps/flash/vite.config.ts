@@ -3,13 +3,15 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 
 // WebUSB grants are per origin, so apps on their own ports cannot use a probe granted here.
-// In development, also serve the other apps from this origin (/inspect/, /workbench/).
+// In development, also serve the other apps and the examples from this origin (/inspect/,
+// /workbench/, /monaco-ide/, /minimal-flash/).
 // (A deployment hosts the static apps on one site, which has the same effect.)
 function siblingApps(): Plugin {
   const apps: Record<string, string> = {
     '/inspect': fileURLToPath(new URL('../inspect/', import.meta.url)),
     '/workbench': fileURLToPath(new URL('../workbench/', import.meta.url)),
     '/monaco-ide': fileURLToPath(new URL('../../examples/monaco-ide/', import.meta.url)),
+    '/minimal-flash': fileURLToPath(new URL('../../examples/minimal-flash/', import.meta.url)),
   };
   return {
     name: 'probe-web-sibling-apps',

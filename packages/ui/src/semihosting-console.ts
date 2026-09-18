@@ -5,11 +5,16 @@ import type { MonitorEvent, Wire } from '@probe-web/client';
 /**
  * `<probe-semihosting-console>`: shows the target's semihosting stdout and
  * stderr and its exit status. Feed it from whatever runs the monitor loop:
- * point `source` at an element that dispatches `monitor-event` (the RTT
- * terminal does) and `monitor-exit` events, or call `push()` directly.
+ * point {@link ProbeSemihostingConsole.source} at an element that dispatches
+ * `monitor-event` and `monitor-exit` events (`<probe-rtt-terminal>` does), or
+ * call {@link ProbeSemihostingConsole.push} and
+ * {@link ProbeSemihostingConsole.setExit} directly.
+ *
+ * Fires no events of its own. Keeps the last 2000 output chunks.
  */
 @customElement('probe-semihosting-console')
 export class ProbeSemihostingConsole extends LitElement {
+  /** @internal */
   static styles = css`
     :host { display: block; font: 13px system-ui, sans-serif; }
     pre { background: #111; color: #eee; padding: 8px; border-radius: 6px; min-height: 4em; max-height: 240px; overflow: auto; font-size: 12px; margin: 4px 0; white-space: pre-wrap; }
@@ -17,6 +22,7 @@ export class ProbeSemihostingConsole extends LitElement {
     button { font: inherit; padding: 4px 8px; }
   `;
 
+  /** An element (usually a `<probe-rtt-terminal>`) whose `monitor-event` / `monitor-exit` events are shown. */
   @property({ attribute: false }) source: EventTarget | null = null;
   @state() private lines: { stream: string; text: string }[] = [];
   @state() private exit: string | null = null;
@@ -38,11 +44,13 @@ export class ProbeSemihostingConsole extends LitElement {
     this.off = () => { src.removeEventListener('monitor-event', onEvent); src.removeEventListener('monitor-exit', onExit); };
   }
 
+  /** Append the output of a semihosting monitor event; other kinds are ignored. */
   push(e: MonitorEvent) {
     if (e.kind !== 'semihosting') return;
     this.lines = [...this.lines, { stream: e.stream, text: e.data }].slice(-2000);
   }
 
+  /** Show how the monitor loop ended; only a semihosting exit is displayed, anything else clears it. */
   setExit(reason: Wire.MonitorExitReason) {
     if (typeof reason === 'object' && 'SemihostingExit' in reason) {
       const r = reason.SemihostingExit;
@@ -50,6 +58,7 @@ export class ProbeSemihostingConsole extends LitElement {
     } else this.exit = null;
   }
 
+  /** Clear the output and exit status. */
   clear() { this.lines = []; this.exit = null; }
 
   render() {

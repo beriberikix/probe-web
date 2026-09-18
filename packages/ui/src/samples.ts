@@ -39,15 +39,19 @@ export class SampleDecoder {
   #format: SampleFormat;
   #leftover = new Uint8Array(0);
 
+  /** Start a decoder for `format` samples with no leftover bytes. */
   constructor(format: SampleFormat = 'u32') {
     this.#format = format;
   }
 
+  /**
+   * The sample format being decoded. Changing the format drops any partial sample,
+   * which belonged to the old one.
+   */
   get format(): SampleFormat {
     return this.#format;
   }
 
-  /** Changing the format drops any partial sample, which belonged to the old one. */
   set format(format: SampleFormat) {
     if (format === this.#format) return;
     this.#format = format;
@@ -59,7 +63,10 @@ export class SampleDecoder {
     this.#leftover = new Uint8Array(0);
   }
 
-  /** Decode whatever whole samples these bytes complete. */
+  /**
+   * Decode whatever whole samples these bytes complete, together with any leftover from the
+   * previous call. A trailing partial sample is kept for the next call.
+   */
   push(bytes: Uint8Array | number[]): number[] {
     const incoming = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
     const buffer = new Uint8Array(this.#leftover.length + incoming.length);

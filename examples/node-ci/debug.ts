@@ -1,9 +1,9 @@
 /**
- * Phase 3 hardware-in-the-loop test for the SDK `Debugger`, over WebSocket to
+ * Hardware-in-the-loop test for the SDK `Debugger`, over WebSocket to
  * `probe-rs serve`, against hardware-tests/firmware/cm33-debug.
  *
  *   node debug.ts --elf ../../apps/flash/public/firmware/mcxa153-debug.elf --chip MCXA153 \
- *     [--url ws://127.0.0.1:3000] [--token spike] [--probe mcu-link] [--svd <file>]
+ *     [--url ws://127.0.0.1:3000] [--token probe-web] [--probe mcu-link] [--svd <file>]
  *
  * Each check prints PASS/FAIL; the process exits 0 only if all pass.
  */
@@ -14,7 +14,7 @@ import { Client, elfSymbol, ensureWasm, type Debugger, type Variable } from '@pr
 const { values: args } = parseArgs({
   options: {
     url: { type: 'string', default: 'ws://127.0.0.1:3000' },
-    token: { type: 'string', default: 'spike' },
+    token: { type: 'string', default: process.env.PROBE_RS_TOKEN ?? 'probe-web' },
     elf: { type: 'string' },
     chip: { type: 'string' },
     probe: { type: 'string' },
@@ -66,7 +66,7 @@ try {
   await sleep(1500);
   check('core runs after continue', (await dbg.refresh()) === 'running', dbg.state);
 
-  // ---- slice 1: run control, registers, memory
+  // ---- run control, registers, memory
   const stop = await dbg.pause();
   check('pause halts with reason Request', dbg.state === 'halted' && stop.reason === 'Request', `pc ${hex(stop.pc)}`);
   check('pause reported a stopped event', stops.at(-1) === '"Request"', stops.join(', '));
@@ -122,10 +122,10 @@ try {
   check('poller reports an external halt', dbg.state === 'halted' && stops.at(-1) === '"Request"', `state ${dbg.state}, stops ${stops.join(', ')}`);
   await dbg.continue();
 
-  // ---- slice 2: debug info, stack trace, scopes/variables/evaluate/set_variable, SVD
+  // ---- debug info, stack trace, scopes/variables/evaluate/set_variable, SVD
   await dbg.loadDebugInfo(elf, args.elf);
   const stepB = addr('step_b') & ~1n;
-  const bp = await session.core(0).raw.setHwBreakpoints(new BigUint64Array([stepB])); // slice 3 wraps breakpoints
+  const bp = await session.core(0).raw.setHwBreakpoints(new BigUint64Array([stepB])); // raw call: the Debugger's breakpoint API is checked below
   check('hardware breakpoint set on step_b', JSON.stringify(bp) === '[{"Ok":null}]', JSON.stringify(bp));
   const nextStop = () => new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('no stop within 5 s')), 5000);
@@ -206,7 +206,7 @@ try {
 
   await session.core(0).raw.clearHwBreakpoints(new BigUint64Array([stepB]));
 
-  // ---- slice 3: breakpoints, stepping, disassembly, source locations
+  // ---- breakpoints, stepping, disassembly, source locations
   const source = (await readFile(args.firmwareSrc!, 'utf8')).split('\n');
   const lineOf = (needle: string) => {
     const i = source.findIndex((l) => l.includes(needle));

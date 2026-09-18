@@ -1,6 +1,24 @@
 {
   "name": "@probe-web/client",
   "version": "0.0.0",
+  "description": "The probe-rs SDK for browsers and Node: flash, RTT, defmt, semihosting and a debugger, over WebUSB or WebSocket",
+  "keywords": [
+    "probe-rs",
+    "embedded",
+    "webusb",
+    "debugger",
+    "flash",
+    "rtt",
+    "defmt"
+  ],
+  "homepage": "https://beriberikix.github.io/probe-web/api/client/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beriberikix/probe-web.git",
+    "directory": "packages/client"
+  },
+  "bugs": "https://github.com/beriberikix/probe-web/issues",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

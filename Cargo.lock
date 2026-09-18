@@ -2205,6 +2205,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "probe-web-wire-gen"
+version = "0.0.0"
+dependencies = [
+ "postcard-rpc",
+ "postcard-schema",
+ "probe-rs-rpc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2577,64 +2588,6 @@ name = "smallvec"
 version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
-
-[[package]]
-name = "spike-defmt-wasm"
-version = "0.0.0"
-dependencies = [
- "console_error_panic_hook",
- "defmt-decoder",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "spike-rpc-ws"
-version = "0.0.0"
-dependencies = [
- "base64 0.22.1",
- "console_error_panic_hook",
- "futures",
- "js-sys",
- "postcard-rpc",
- "probe-rs-rpc",
- "probe-rs-rpc-client",
- "sha2 0.11.0",
- "tokio",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "spike-schema-ts"
-version = "0.0.0"
-dependencies = [
- "postcard-rpc",
- "postcard-schema",
- "probe-rs-rpc",
- "serde",
- "serde-wasm-bindgen",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "spike-webusb-worker"
-version = "0.0.0"
-dependencies = [
- "console_error_panic_hook",
- "futures",
- "js-sys",
- "postcard",
- "postcard-rpc",
- "probe-rs",
- "probe-rs-rpc",
- "probe-rs-rpc-client",
- "tokio",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "web-time",
-]
 
 [[package]]
 name = "spin"
