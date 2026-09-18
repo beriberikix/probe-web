@@ -9,16 +9,23 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
 import { ProbeDebugAdapter } from '@probe-web/dap';
+// The look shared with the docs, and light/dark for the editor and terminal.
+import '@probe-web/ui/theme.css';
+import { currentScheme, onSchemeChange } from '@probe-web/ui/color-scheme';
+import { followScheme } from '@probe-web/ui/terminal-theme';
 
 (self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = { getWorker: () => new EditorWorker() };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const qs = new URLSearchParams(location.search);
 for (const k of ['url', 'token', 'probe', 'chip', 'elf']) if (qs.get(k)) $<HTMLInputElement>(k).value = qs.get(k)!;
 
-const editor = monaco.editor.create($('editor'), { readOnly: true, glyphMargin: true, automaticLayout: true, minimap: { enabled: false }, model: null });
+const editorTheme = () => (currentScheme() === 'dark' ? 'vs-dark' : 'vs');
+const editor = monaco.editor.create($('editor'), { readOnly: true, glyphMargin: true, automaticLayout: true, minimap: { enabled: false }, model: null, theme: editorTheme() });
+onSchemeChange(() => monaco.editor.setTheme(editorTheme()));
 const bpDecorations = editor.createDecorationsCollection();
 const pcDecoration = editor.createDecorationsCollection();
-const term = new Terminal({ convertEol: true, fontSize: 12, theme: { background: '#0b0f14' } });
+const term = new Terminal({ convertEol: true, fontSize: 12 });
+followScheme(term);
 const fit = new FitAddon();
 term.loadAddon(fit);
 term.open($('term'));

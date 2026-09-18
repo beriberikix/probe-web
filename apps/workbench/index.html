@@ -3,63 +3,73 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>probe-web workbench</title>
+  <title>Workbench · probe-web</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>
+    // The docs' light/dark setting (VitePress's own check), applied before first paint.
+    ;(() => {
+      let p = 'auto'
+      try { p = localStorage.getItem('vitepress-theme-appearance') || 'auto' } catch {}
+      if (p === 'auto' ? matchMedia('(prefers-color-scheme: dark)').matches : p === 'dark')
+        document.documentElement.classList.add('dark')
+    })()
+  </script>
   <style>
-    html, body { height: 100%; margin: 0; }
-    body { font: 13px system-ui, sans-serif; color: #111; background: #f6f7f9; display: flex; flex-direction: column; }
-    header { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid #ddd; background: #fff; }
-    header h1 { font-size: 14px; margin: 0 8px 0 0; }
-    header input { font: inherit; padding: 3px 6px; }
-    header button { font: inherit; padding: 4px 9px; }
-    header .sep { width: 1px; height: 20px; background: #ddd; margin: 0 4px; }
-    #status { color: #555; margin-left: auto; }
-    #dock { flex: 1; min-height: 0; }
-    .panel { height: 100%; overflow: auto; padding: 6px 8px; box-sizing: border-box; background: #fff; }
-    .source-panel { height: 100%; display: flex; flex-direction: column; background: #fff; }
-    .source-header { font: 12px ui-monospace, monospace; color: #555; padding: 3px 8px; border-bottom: 1px solid #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .source-editor { flex: 1; min-height: 0; }
-    .console-panel { height: 100%; background: #0b0f14; padding: 4px; box-sizing: border-box; }
-    /* Monaco glyphs (global CSS: Monaco renders in light DOM). */
-    .bp-verified { background: radial-gradient(circle, #dc2626 45%, transparent 50%); }
-    .bp-unverified { background: radial-gradient(circle, transparent 35%, #dc2626 40%, #dc2626 48%, transparent 52%); }
-    .pc-line { background: rgba(250, 204, 21, 0.25); }
-    .pc-arrow::before { content: '➤'; color: #ca8a04; font-size: 12px; margin-left: 2px; }
+    /* Reserved before the stylesheet arrives, so nothing shifts or flashes. */
+    html { background: #fff; } html.dark { background: #1b1b1f; }
+    body { margin: 0; }
+    .app-bar { height: 44px; box-sizing: border-box; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>probe-web workbench</h1>
-    <select id="transport" title="Where probe-rs runs: on a server reached over WebSocket, or in this page over WebUSB">
-      <option value="websocket">WebSocket</option>
-      <option value="webusb">WebUSB</option>
-    </select>
-    <input id="url" value="ws://127.0.0.1:3000" size="18" title="probe-rs serve URL">
-    <input id="token" placeholder="token" size="7">
-    <input id="probe" placeholder="probe (substring)" size="12">
-    <button id="pick-probe" hidden title="Let this page use a probe over WebUSB (the browser asks which one)">Select probe…</button>
-    <input id="chip" placeholder="chip" size="10">
-    <select id="protocol" title="wire protocol"><option>Swd</option><option>Jtag</option></select>
-    <span class="sep"></span>
-    <button id="pick-elf" title="Pick the firmware ELF; it is watched and re-flashed when rebuilt">ELF…</button>
-    <span id="elf-name" class="muted"></span>
-    <button id="pick-svd">SVD…</button>
-    <label id="pick-config" title="Prefill chip, probe and protocol from an Embed.toml or launch.json you already have">Config…<input type="file" id="config-file" accept=".toml,.json" hidden></label>
-    <span id="svd-name" class="muted"></span>
-    <button id="pick-src" title="Pick the project folder so sources can be shown">Sources…</button>
-    <span id="src-name" class="muted"></span>
-    <button id="resume" hidden></button>
-    <button id="forget" title="Forget the remembered ELF, SVD and source folder">Forget files</button>
-    <span class="sep"></span>
-    <label><input type="checkbox" id="stop-on-entry"> stop on entry</label>
-    <button id="launch">Launch</button>
-    <button id="attach">Attach</button>
-    <button id="stop" disabled>Stop</button>
-    <button id="dump-core" disabled title="Save a coredump of the halted core, readable by native probe-rs">Dump core</button>
-    <span class="sep"></span>
-    <button id="reset-layout">Reset layout</button>
-    <span id="status">not connected</span>
+  <header class="app-bar" data-app="workbench">
+    <div class="app-actions" role="group" aria-label="Session">
+      <label class="check" title="Halt at the program's entry point after launching"><input type="checkbox" id="stop-on-entry"> stop on entry</label>
+      <button id="launch" class="primary" data-icon="play" title="Flash the ELF and start debugging">Launch</button>
+      <button id="attach" data-icon="link" title="Debug the firmware already running, without flashing">Attach</button>
+      <button id="stop" class="danger" data-icon="stop" disabled title="End the debug session">Stop</button>
+      <button id="dump-core" data-icon="download" disabled title="Save a coredump of the halted core, readable by native probe-rs">Dump core</button>
+    </div>
   </header>
+
+  <div class="toolbar" id="toolbar">
+    <div class="group" role="group" aria-label="Target">
+      <select id="transport" title="Where probe-rs runs: on a server reached over WebSocket, or in this page over WebUSB">
+        <option value="websocket">WebSocket</option>
+        <option value="webusb">WebUSB</option>
+      </select>
+      <input id="url" value="ws://127.0.0.1:3000" size="18" title="probe-rs serve URL">
+      <input id="token" placeholder="token" size="7" title="probe-rs serve token">
+      <input id="probe" placeholder="probe (substring)" size="12" title="Which probe: part of its name or serial number">
+      <button id="pick-probe" hidden data-icon="plug" title="Let this page use a probe over WebUSB (the browser asks which one)">Select probe…</button>
+      <input id="chip" placeholder="chip" size="10" title="Target chip">
+      <select id="protocol" title="wire protocol"><option>Swd</option><option>Jtag</option></select>
+    </div>
+    <span class="sep"></span>
+    <div class="group" role="group" aria-label="Files">
+      <button id="pick-elf" data-icon="file" title="Pick the firmware ELF; it is watched and re-flashed when rebuilt">ELF…</button>
+      <span id="elf-name" class="file-name"></span>
+      <button id="pick-svd" data-icon="chip" title="Pick an SVD file for the Peripherals panel">SVD…</button>
+      <label id="pick-config" class="button" title="Prefill chip, probe and protocol from an Embed.toml or launch.json you already have">Config…<input type="file" id="config-file" accept=".toml,.json" hidden></label>
+      <span id="svd-name" class="file-name"></span>
+      <button id="pick-src" data-icon="folder" title="Pick the project folder so sources can be shown">Sources…</button>
+      <span id="src-name" class="file-name"></span>
+      <button id="resume" hidden class="ghost"></button>
+      <button id="forget" class="ghost" title="Forget the remembered ELF, SVD and source folder">Forget files</button>
+    </div>
+    <span class="spacer"></span>
+    <button id="reset-layout" class="icon" data-icon="layout" title="Reset the panel layout" aria-label="Reset layout"></button>
+  </div>
+
   <div id="dock" class="dockview-theme-light"></div>
+
+  <footer class="status-bar">
+    <span id="status" class="item dot">not connected</span>
+    <span class="spacer"></span>
+    <span class="item" id="sb-elf"></span>
+    <span class="item" id="sb-chip"></span>
+    <span class="item" id="sb-transport"></span>
+  </footer>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>

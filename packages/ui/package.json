@@ -35,7 +35,11 @@
     "./memory-view": "./src/memory-view.ts",
     "./peripherals": "./src/peripherals.ts",
     "./test-runner": "./src/test-runner.ts",
-    "./rtt-plot": "./src/rtt-plot.ts"
+    "./rtt-plot": "./src/rtt-plot.ts",
+    "./theme.css": "./src/theme.css",
+    "./icons": "./src/icons.ts",
+    "./color-scheme": "./src/color-scheme.ts",
+    "./terminal-theme": "./src/terminal-theme.ts"
   },
   "dependencies": {
     "@probe-web/client": "*",

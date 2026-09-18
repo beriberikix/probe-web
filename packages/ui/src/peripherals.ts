@@ -28,10 +28,13 @@ interface Node {
 export class ProbePeripherals extends DebuggerElement {
   /** @internal */
   static styles = [debugStyles, css`
-    .node { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; padding: 1px 0; }
-    .twisty { width: 1em; cursor: pointer; user-select: none; color: #555; }
-    .name { color: #0f766e; }
-    .type { color: #888; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+    .node { display: flex; gap: 6px; align-items: center; min-height: 22px; padding: 0 4px; border-radius: 4px; white-space: nowrap; }
+    .node:hover { background: var(--_default-soft); }
+    .twisty { width: 1em; flex: none; text-align: center; cursor: pointer; user-select: none; color: var(--_text-3); font-size: 10px; }
+    .twisty:hover { color: var(--_text-1); }
+    .name { color: var(--_brand-1); font-family: var(--_mono); font-size: 12px; }
+    .type { color: var(--_text-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+    input.filter { width: 14em; }
   `];
 
   @state() private svdName = '';
@@ -126,7 +129,7 @@ export class ProbePeripherals extends DebuggerElement {
   }
 
   render() {
-    if (!this.debugger) return html`<div class="muted">no debugger</div>`;
+    if (!this.debugger) return html`<div class="muted empty">no debugger</div>`;
     const f = this.filter.toLowerCase();
     const shown = f ? this.roots.filter((r) => r.name.toLowerCase().includes(f)) : this.roots;
     return html`
@@ -139,7 +142,7 @@ export class ProbePeripherals extends DebuggerElement {
         ${this.svdName ? html`<span class="muted">${this.svdName}</span>` : nothing}
       </div>
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
-      ${!this.svdName ? html`<div class="muted">load an SVD file to see peripherals</div>` : nothing}
+      ${!this.svdName ? html`<div class="muted empty">load an SVD file to see peripherals</div>` : nothing}
       ${shown.map((r) => this.renderNode(r))}
     `;
   }

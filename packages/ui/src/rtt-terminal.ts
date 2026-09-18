@@ -4,6 +4,9 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import { elfHasRtt, type MonitorEvent, type Session, type Wire } from '@probe-web/client';
+import { baseStyles } from './base-style.ts';
+import { followScheme, terminalFontFamily } from './terminal-theme.ts';
+import { icon } from './icons.ts';
 
 /**
  * `<probe-rtt-terminal>`: runs the monitor loop and shows RTT (String or
@@ -35,12 +38,16 @@ import { elfHasRtt, type MonitorEvent, type Session, type Wire } from '@probe-we
 @customElement('probe-rtt-terminal')
 export class ProbeRttTerminal extends LitElement {
   /** @internal */
-  static styles = [unsafeCSS(xtermCss), css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
-    button { font: inherit; padding: 6px 10px; }
-    .term { height: 320px; background: #000; padding: 4px; border-radius: 6px; }
-    .status { color: #666; }
+  static styles = [unsafeCSS(xtermCss), baseStyles, css`
+    :host { display: flex; flex-direction: column; }
+    .row { margin: 0 0 6px; }
+    .term {
+      flex: 1 1 auto; height: var(--pw-terminal-height, 320px); min-height: 80px; box-sizing: border-box;
+      padding: 4px 0 4px 8px; background: var(--_bg);
+      border: 1px solid var(--_divider); border-radius: var(--_radius);
+    }
+    .status { color: var(--_text-2); font-size: 12px; }
+    .spacer { flex: 1; }
   `];
 
   /** The attached session to monitor; the buttons are disabled without one. */
@@ -57,9 +64,22 @@ export class ProbeRttTerminal extends LitElement {
   private term: Terminal | null = null;
   private fit = new FitAddon();
   private line = '';
+  private unfollow: (() => void) | null = null;
+
+  disconnectedCallback() {
+    this.unfollow?.();
+    this.unfollow = null;
+    super.disconnectedCallback();
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    if (this.term && !this.unfollow) this.unfollow = followScheme(this.term);
+  }
 
   firstUpdated() {
-    this.term = new Terminal({ convertEol: true, fontSize: 12, scrollback: 5000, theme: { background: '#000000' } });
+    this.term = new Terminal({ convertEol: true, fontSize: 12, fontFamily: terminalFontFamily, scrollback: 5000 });
+    this.unfollow = followScheme(this.term);
     this.term.loadAddon(this.fit);
     this.term.open(this.renderRoot.querySelector('.term')!);
     this.fit.fit();
@@ -155,11 +175,12 @@ export class ProbeRttTerminal extends LitElement {
   render() {
     return html`
       <div class="row">
-        <button @click=${this.start} ?disabled=${this.running || !this.session}>${this.bootInfo ? 'Run + monitor' : 'Attach + monitor'}</button>
-        <button @click=${this.stop} ?disabled=${!this.running}>Stop</button>
-        <button @click=${() => this.term?.clear()}>Clear</button>
+        <button class="primary" @click=${this.start} ?disabled=${this.running || !this.session}>${icon('play', 12)}${this.bootInfo ? 'Run + monitor' : 'Attach + monitor'}</button>
+        <button @click=${this.stop} ?disabled=${!this.running}>${icon('stop', 12)}Stop</button>
         <span class="status">${this.status}</span>
         ${this.channels.length ? html`<span class="status">${this.channels.map((c) => c.name).join(' · ')}</span>` : nothing}
+        <span class="spacer"></span>
+        <button class="ghost" title="Clear the terminal" @click=${() => this.term?.clear()}>${icon('trash', 13)}Clear</button>
       </div>
       <div class="term"></div>
     `;

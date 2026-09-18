@@ -81,7 +81,7 @@ export class ProbeCallstack extends LitElement {
   render() {
     return html`
       ${this.error ? html`<div class="err">${this.error}</div>` : nothing}
-      ${this.frames.length === 0 ? html`<div class="muted">halt the core to see the stack</div>` : nothing}
+      ${this.frames.length === 0 ? html`<div class="muted empty">halt the core to see the stack</div>` : nothing}
       <table class=${this.stale ? 'stale' : ''}>
         ${this.frames.map((f) => html`
           <tr class="clickable ${f.id === this.selected ? 'selected' : ''}" data-frame=${f.functionName} @click=${() => this.select(f)}>

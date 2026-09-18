@@ -23,7 +23,8 @@ export interface MemoryHighlight {
   sizeUnknown?: boolean;
 }
 
-const HIGHLIGHT_COLORS = ['#fde68a', '#bfdbfe', '#bbf7d0', '#fbcfe8', '#ddd6fe', '#fed7aa'];
+// Translucent, so the same colours read on light and dark backgrounds.
+const HIGHLIGHT_COLORS = ['rgba(234, 179, 8, 0.3)', 'rgba(59, 130, 246, 0.28)', 'rgba(16, 185, 129, 0.28)', 'rgba(236, 72, 153, 0.25)', 'rgba(139, 92, 246, 0.28)', 'rgba(249, 115, 22, 0.28)'];
 
 /**
  * `<probe-memory-view>`: a hex/ASCII view of target memory. Bytes per row,
@@ -54,13 +55,21 @@ const HIGHLIGHT_COLORS = ['#fde68a', '#bfdbfe', '#bbf7d0', '#fbcfe8', '#ddd6fe',
 export class ProbeMemoryView extends DebuggerElement {
   /** @internal */
   static styles = [debugStyles, css`
-    .grid td { padding: 0 4px; }
-    .ascii { color: #555; letter-spacing: 0.5px; }
-    .short { color: #bbb; }
+    .row { padding-bottom: 6px; border-bottom: 1px solid var(--_divider); }
+    .row.highlights { border: 0; padding: 0; }
+    input.address { width: 9em; }
+    input.watch { width: 11em; }
+    .grid { width: auto; }
+    .grid td { padding: 0 4px; line-height: 20px; }
+    .grid td:first-child { padding-right: 10px; color: var(--_text-3); }
+    .grid td.cell { color: var(--_text-1); }
+    .ascii { color: var(--_text-2); letter-spacing: 0.5px; padding-left: 12px !important; border-left: 1px solid var(--_divider); }
+    .short { color: var(--_text-3) !important; }
     .highlights { gap: 4px; }
-    .chip { border-radius: 10px; padding: 0 2px 0 8px; font-size: 12px; }
-    .chip .link { border: 0; background: transparent; cursor: pointer; padding: 0 4px; }
-    .grid td.hl.changed { outline: 1px solid #d97706; }
+    .chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 0 2px 0 8px; font-size: 12px; font-family: var(--_mono); }
+    .chip .link { min-height: 18px; width: 18px; padding: 0; border-radius: 50%; background: transparent; color: var(--_text-2); }
+    .chip .link:hover:not(:disabled) { background: var(--_default-soft); color: var(--_text-1); }
+    .grid td.hl.changed { outline: 1px solid var(--_yellow-2); }
     :host([locked]) .grid { opacity: 0.85; }
   `];
 
@@ -196,7 +205,7 @@ export class ProbeMemoryView extends DebuggerElement {
   }
 
   render() {
-    if (!this.debugger) return html`<div class="muted">no debugger</div>`;
+    if (!this.debugger) return html`<div class="muted empty">no debugger</div>`;
     const rows: number[] = [];
     for (let off = 0; off < this.bytes.length; off += this.bytesPerRow) rows.push(off);
     return html`

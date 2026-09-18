@@ -1,6 +1,7 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { followScheme, terminalFontFamily } from '@probe-web/ui/terminal-theme';
 
 /** The debug console: DAP `output` events and workbench messages, in xterm.js. */
 export class ConsoleView {
@@ -13,7 +14,8 @@ export class ConsoleView {
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'console-panel';
-    this.term = new Terminal({ convertEol: true, fontSize: 12, scrollback: 5000, theme: { background: '#0b0f14' } });
+    this.term = new Terminal({ convertEol: true, fontSize: 12, fontFamily: terminalFontFamily, scrollback: 5000 });
+    followScheme(this.term);
     this.term.loadAddon(this.fit);
     this.term.open(this.element);
     new ResizeObserver(() => {

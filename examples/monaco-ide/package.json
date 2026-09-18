@@ -1,5 +1,19 @@
-{ "name": "@probe-web/example-monaco-ide", "private": true, "type": "module",
+{
+  "name": "@probe-web/example-monaco-ide",
+  "private": true,
+  "type": "module",
   "description": "A minimal browser IDE (Monaco + xterm) that debugs a probe-rs target using only the Debug Adapter Protocol",
-  "scripts": { "dev": "vite --port 5176 --strictPort" },
-  "dependencies": { "@probe-web/dap": "*", "@xterm/xterm": "^5.5.0", "@xterm/addon-fit": "^0.10.0", "monaco-editor": "^0.56.0" },
-  "devDependencies": { "@vscode/debugprotocol": "^1.68.0" } }
+  "scripts": {
+    "dev": "vite --port 5176 --strictPort"
+  },
+  "dependencies": {
+    "@probe-web/dap": "*",
+    "@probe-web/ui": "*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "monaco-editor": "^0.56.0"
+  },
+  "devDependencies": {
+    "@vscode/debugprotocol": "^1.68.0"
+  }
+}

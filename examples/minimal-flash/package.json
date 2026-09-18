@@ -3,5 +3,9 @@
   "private": true,
   "type": "module",
   "description": "The smallest complete flashing page: grant a probe, attach, flash, run",
-  "dependencies": { "@probe-web/client": "*", "@probe-web/devices": "*" }
+  "dependencies": {
+    "@probe-web/client": "*",
+    "@probe-web/devices": "*",
+    "@probe-web/ui": "*"
+  }
 }

@@ -1,4 +1,6 @@
+import '../../shared/shell.ts';
 import '@probe-web/ui/device-picker';
+import './layout.ts';
 import { Client, createLocalWorker, type Wire } from '@probe-web/client';
 import type { ProbeDevicePicker } from '@probe-web/ui';
 

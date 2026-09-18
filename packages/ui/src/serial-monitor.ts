@@ -7,6 +7,9 @@ import {
   BAUD_RATES, LineDecoder, SerialConnection, describePort, grantedPorts, hasWebSerial, onPortsChanged, requestPort,
   type LineEnding, type SerialPortLike,
 } from '@probe-web/serial';
+import { baseStyles } from './base-style.ts';
+import { followScheme, terminalFontFamily } from './terminal-theme.ts';
+import { icon } from './icons.ts';
 
 /**
  * `<probe-serial-monitor>`: a WebSerial console (baud picker, send line with
@@ -22,13 +25,18 @@ import {
 @customElement('probe-serial-monitor')
 export class ProbeSerialMonitor extends LitElement {
   /** @internal */
-  static styles = [unsafeCSS(xtermCss), css`
-    :host { display: block; font: 13px system-ui, sans-serif; }
-    .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
-    button, select, input { font: inherit; padding: 6px 10px; }
-    input.send { flex: 1; min-width: 12em; }
-    .term { height: 260px; background: #000; padding: 4px; border-radius: 6px; }
-    .status { color: #666; }
+  static styles = [unsafeCSS(xtermCss), baseStyles, css`
+    :host { display: flex; flex-direction: column; }
+    .row { margin: 0 0 6px; }
+    form.row { margin: 6px 0 0; flex-wrap: nowrap; }
+    input.send { flex: 1; min-width: 8em; font-family: var(--_mono); font-size: 12px; }
+    .term {
+      flex: 1 1 auto; height: var(--pw-terminal-height, 260px); min-height: 80px; box-sizing: border-box;
+      padding: 4px 0 4px 8px; background: var(--_bg);
+      border: 1px solid var(--_divider); border-radius: var(--_radius);
+    }
+    .status { color: var(--_text-2); font-size: 12px; }
+    .spacer { flex: 1; }
   `];
 
   /** The port to use; set it, or let the user pick one with *Choose port…*. */
@@ -44,9 +52,11 @@ export class ProbeSerialMonitor extends LitElement {
   private lines = new LineDecoder();
   private decoder = new TextDecoder();
   private unsubscribe: (() => void) | null = null;
+  private unfollow: (() => void) | null = null;
 
   connectedCallback() {
     super.connectedCallback();
+    if (this.term && !this.unfollow) this.unfollow = followScheme(this.term);
     if (!hasWebSerial()) {
       this.status = 'WebSerial is not available in this browser (use Chrome or Edge)';
       return;
@@ -56,6 +66,8 @@ export class ProbeSerialMonitor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.unfollow?.();
+    this.unfollow = null;
     this.unsubscribe?.();
     void this.connection?.close();
     super.disconnectedCallback();
@@ -72,7 +84,8 @@ export class ProbeSerialMonitor extends LitElement {
   }
 
   firstUpdated() {
-    this.term = new Terminal({ convertEol: true, fontSize: 12, scrollback: 5000, theme: { background: '#000000' } });
+    this.term = new Terminal({ convertEol: true, fontSize: 12, fontFamily: terminalFontFamily, scrollback: 5000 });
+    this.unfollow = followScheme(this.term);
     this.term.loadAddon(this.fit);
     const el = this.renderRoot.querySelector('.term')!;
     this.term.open(el as HTMLElement);
@@ -169,10 +182,11 @@ export class ProbeSerialMonitor extends LitElement {
           ${connected
             ? html`<button @click=${this.disconnect}>Disconnect</button>
                    <button @click=${this.reset} title="Pulse RTS (EN on ESP devkits)">Reset</button>`
-            : html`<button @click=${this.connect} ?disabled=${!this.port}>Connect</button>`}
+            : html`<button class="primary" @click=${this.connect} ?disabled=${!this.port}>Connect</button>`}
         ` : nothing}
-        <button @click=${() => this.term?.clear()}>Clear</button>
         <span class="status">${this.status}</span>
+        <span class="spacer"></span>
+        <button class="ghost" title="Clear the terminal" @click=${() => this.term?.clear()}>${icon('trash', 13)}Clear</button>
       </div>
       <div class="term"></div>
       ${supported ? html`
@@ -182,7 +196,7 @@ export class ProbeSerialMonitor extends LitElement {
             @change=${(e: Event) => (this.lineEnding = (e.target as HTMLSelectElement).value as LineEnding)}>
             <option value="none">no ending</option><option value="lf">LF</option><option value="cr">CR</option><option value="crlf">CR LF</option>
           </select>
-          <button type="submit" ?disabled=${!connected}>Send</button>
+          <button type="submit" ?disabled=${!connected}>${icon('send', 13)}Send</button>
         </form>` : nothing}
     `;
   }

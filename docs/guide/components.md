@@ -98,9 +98,36 @@ The [API reference](/api/ui/) lists every element's properties, methods and even
 
 ## Styling
 
-The elements render in shadow DOM with their own compact styles, so page CSS does not leak
-into them. Size them from outside like any block element. The terminal and the plot fill
-the space they are given.
+The elements render in shadow DOM, so page CSS does not leak into them. Size them from
+outside like any block element.
+
+They share one look with these docs, VitePress's default theme, and read it from CSS custom
+properties. Import the theme to get the same tokens on your page:
+
+```ts
+import '@probe-web/ui/theme.css';
+```
+
+It defines the tokens and styles plain `button`, `input` and `select` to match. The
+elements also render without it, using the light values as fallbacks. Set any token to
+recolour every element:
+
+| Token | What it colours |
+|---|---|
+| `--pw-c-bg`, `--pw-c-bg-alt`, `--pw-c-bg-soft` | backgrounds: panels, sidebars and cards |
+| `--pw-c-text-1`, `--pw-c-text-2`, `--pw-c-text-3` | text, muted text and hints |
+| `--pw-c-divider`, `--pw-c-border` | lines between rows and around inputs |
+| `--pw-c-brand-1`…`3`, `--pw-c-brand-soft` | primary buttons, selection and focus |
+| `--pw-c-green-*`, `--pw-c-yellow-*`, `--pw-c-red-*` | success, changed values and the PC, errors and breakpoints |
+| `--pw-font-family-base`, `--pw-font-family-mono` | type |
+| `--pw-radius`, `--pw-radius-lg`, `--pw-control-height` | shape and density |
+
+For dark mode, add the `dark` class to `<html>`, as VitePress does. The terminals, the plot
+and the workbench's editor follow the class as it changes. For your own xterm.js or canvas
+code, `onSchemeChange` and `terminalTheme` do the same job.
+
+`<probe-rtt-terminal>` and `<probe-serial-monitor>` are 320 and 260 pixels tall by default.
+To make one fill its container, give the element a height and set `--pw-terminal-height: 0`.
 
 ## Bundling
 

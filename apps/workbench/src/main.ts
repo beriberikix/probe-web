@@ -2,9 +2,12 @@
 // inline ProbeDebugAdapter; the other panels are @probe-web/ui components on the
 // same Debugger. Query flags: ?fake=1 (scripted FakeDebugger, for tests),
 // ?auto=1&token=…&probe=…&chip=…&elf=/firmware/….elf&bp=40 (hardware check).
+import '../../shared/shell.ts';
 import 'dockview/dist/styles/dockview.css';
+import './workbench.css';
 import '@probe-web/ui';
-import { createDockview, type DockviewApi, type IContentRenderer } from 'dockview';
+import './status-bar.ts';
+import { createDockview, themeLight, type DockviewApi, type IContentRenderer } from 'dockview';
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
 import { Client, DirectorySourceProvider, elfHasRtt, importConfig, openSession, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider, type Wire } from '@probe-web/client';
 import { describe, hasWebUsb, requestProbe } from '@probe-web/devices';
@@ -98,7 +101,8 @@ function createComponent(options: { id: string; name: string }): IContentRendere
 function defaultLayout(api: DockviewApi) {
   api.clear();
   api.addPanel({ id: 'source', component: 'source', title: 'Source', renderer: 'always' });
-  api.addPanel({ id: 'controls', component: 'controls', title: 'Run', position: { referencePanel: 'source', direction: 'above' } });
+  // One row of controls is shorter than dockview's default 100px group minimum.
+  api.addPanel({ id: 'controls', component: 'controls', title: 'Run', minimumHeight: 60, position: { referencePanel: 'source', direction: 'above' } });
   api.addPanel({ id: 'callstack', component: 'callstack', title: 'Call stack', position: { referencePanel: 'source', direction: 'right' } });
   api.addPanel({ id: 'variables', component: 'variables', title: 'Variables', position: { referencePanel: 'callstack', direction: 'below' } });
   api.addPanel({ id: 'peripherals', component: 'peripherals', title: 'Peripherals', position: { referencePanel: 'variables', direction: 'within' } });
@@ -148,7 +152,9 @@ function fitRunPanel(api: DockviewApi) {
   panel.group.api.setSize({ height: Math.round(Math.max(72, Math.min(wanted, 220))) });
 }
 
-const dock: DockviewApi = createDockview($('dock'), { createComponent, className: 'dockview-theme-light' });
+// dockview's light theme for its structure; workbench.css recolours it from the page's theme
+// tokens, so it follows light and dark.
+const dock: DockviewApi = createDockview($('dock'), { createComponent, theme: themeLight });
 (window as unknown as { dock: DockviewApi }).dock = dock;
 function restoreLayout() {
   if (qs.has('fresh')) { defaultLayout(dock); return; }
