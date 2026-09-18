@@ -17,7 +17,8 @@ import { ConsoleView } from './console-view.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const qs = new URLSearchParams(location.search);
-const LAYOUT_KEY = 'probe-web.workbench.layout.v1';
+// v2: the Tests and Plot panels were added, and a saved v1 layout has no place for them.
+const LAYOUT_KEY = 'probe-web.workbench.layout.v2';
 const SETTINGS_KEY = 'probe-web.workbench.settings.v1';
 
 // ------------------------------------------------------------------ panels
@@ -26,8 +27,15 @@ const source = new SourceView();
 const consoleView = new ConsoleView();
 const log = (m: string, color?: 'gray' | 'red' | 'green' | 'cyan') => { consoleView.writeln(m, color); console.log('[workbench] ' + m); };
 
-/** Component panels: tag name per dockview component name. */
-const COMPONENTS: Record<string, { tag: string; title: string }> = {
+/**
+ * Component panels: tag name per dockview component name.
+ *
+ * `needs` says what a panel is driven by. Most take the `Debugger`, which owns one core's
+ * debug state; the test runner takes the `Session`, because the `tests/*` endpoints belong
+ * to the session and running a suite is not a debug activity. Declaring it beats having
+ * the propagation loop guess: it assigns to every panel, so a mismatch would be silent.
+ */
+const COMPONENTS: Record<string, { tag: string; title: string; needs?: 'session' }> = {
   controls: { tag: 'probe-core-controls', title: 'Run' },
   callstack: { tag: 'probe-callstack', title: 'Call stack' },
   variables: { tag: 'probe-variables', title: 'Variables' },
@@ -36,9 +44,35 @@ const COMPONENTS: Record<string, { tag: string; title: string }> = {
   disassembly: { tag: 'probe-disassembly', title: 'Disassembly' },
   memory: { tag: 'probe-memory-view', title: 'Memory' },
   peripherals: { tag: 'probe-peripherals', title: 'Peripherals' },
+  plot: { tag: 'probe-rtt-plot', title: 'Plot' },
+  tests: { tag: 'probe-test-runner', title: 'Tests', needs: 'session' },
 };
-const elements = new Map<string, HTMLElement & { debugger: Debugger | null }>();
+/** A panel element. Which of these it actually has depends on its `needs`. */
+type PanelElement = HTMLElement & Partial<{
+  debugger: Debugger | null;
+  session: Session | null;
+  bootInfo: Wire.BootInfo | null;
+}>;
+const elements = new Map<string, PanelElement>();
 let currentDebugger: Debugger | null = null;
+/**
+ * Declared here, with the panels, rather than beside the other connection state: the panel
+ * factory reads it, and dockview builds panels while the layout is restored — which happens
+ * before the connection section is evaluated.
+ */
+let session: Session | null = null;
+/** What the last flash returned, so the test runner can start a suite without re-flashing. */
+let lastBootInfo: Wire.BootInfo | null = null;
+
+/**
+ * Which RTT channel carries binary samples for the Plot panel.
+ *
+ * Kept here rather than read off the panel, because dockview builds a panel lazily — a Plot
+ * tab that has never been shown has no element to ask. It is the panel's own input that
+ * sets it, through the `channel-changed` event.
+ */
+const PLOT_CHANNEL_KEY = 'probe-web.workbench.plot-channel';
+let plotChannel = Number(localStorage.getItem(PLOT_CHANNEL_KEY) ?? '1') || 1;
 
 function createComponent(options: { id: string; name: string }): IContentRenderer {
   if (options.name === 'source') return { element: source.element, init: () => {} };
@@ -47,8 +81,14 @@ function createComponent(options: { id: string; name: string }): IContentRendere
   const wrapper = document.createElement('div');
   wrapper.className = 'panel';
   if (spec) {
-    const el = document.createElement(spec.tag) as HTMLElement & { debugger: Debugger | null };
-    el.debugger = currentDebugger;
+    const el = document.createElement(spec.tag) as PanelElement;
+    if (spec.needs === 'session') {
+      el.session = session;
+      el.bootInfo = lastBootInfo;
+    } else {
+      el.debugger = currentDebugger;
+    }
+    if (options.name === 'plot') (el as PanelElement & { channel: number }).channel = plotChannel;
     elements.set(options.name, el);
     wrapper.append(el);
   }
@@ -66,6 +106,10 @@ function defaultLayout(api: DockviewApi) {
   api.addPanel({ id: 'breakpoints', component: 'breakpoints', title: 'Breakpoints', position: { referencePanel: 'console', direction: 'within' } });
   api.addPanel({ id: 'disassembly', component: 'disassembly', title: 'Disassembly', position: { referencePanel: 'console', direction: 'within' } });
   api.addPanel({ id: 'memory', component: 'memory', title: 'Memory', position: { referencePanel: 'console', direction: 'within' } });
+  // Tabs in the console group rather than a row of their own: a new group would take height
+  // from the source view, which the layout-sizing tests hold to a third of the dock.
+  api.addPanel({ id: 'plot', component: 'plot', title: 'Plot', position: { referencePanel: 'console', direction: 'within' } });
+  api.addPanel({ id: 'tests', component: 'tests', title: 'Tests', position: { referencePanel: 'console', direction: 'within' } });
   api.addPanel({ id: 'registers', component: 'registers', title: 'Registers', position: { referencePanel: 'variables', direction: 'right' } });
   api.getPanel('console')?.api.setActive();
   api.getPanel('variables')?.api.setActive();
@@ -125,6 +169,14 @@ function restoreLayout() {
   defaultLayout(dock);
 }
 restoreLayout();
+
+// The Plot panel decides which channel it reads; RTT is configured once, when a run starts,
+// so the value has to be remembered here and applied on the next launch.
+$('dock').addEventListener('channel-changed', (e) => {
+  plotChannel = (e as CustomEvent<number>).detail;
+  try { localStorage.setItem(PLOT_CHANNEL_KEY, String(plotChannel)); } catch { /* ignore */ }
+  log(`plot: channel ${plotChannel} is read as binary from the next launch`, 'gray');
+});
 let saveTimer = 0;
 dock.onDidLayoutChange(() => {
   clearTimeout(saveTimer);
@@ -314,7 +366,6 @@ if (qs.has('fresh')) {
 // ------------------------------------------------------------------ session
 
 let dap: DapClient | null = null;
-let session: Session | null = null;
 let client: Client | null = null;
 let unsubscribe: (() => void)[] = [];
 
@@ -324,8 +375,22 @@ function setStatus(text: string) {
 
 function useDebugger(d: Debugger | null) {
   currentDebugger = d;
-  for (const el of elements.values()) el.debugger = d;
+  for (const [name, el] of elements) if (COMPONENTS[name]?.needs !== 'session') el.debugger = d;
   if (d) d.addEventListener('breakpoints', () => renderBreakpointGlyphs());
+}
+
+/**
+ * Hand the session (and the boot info from the last flash) to the panels driven by it.
+ *
+ * Called whenever either changes, because the test runner needs both: the session to reach
+ * `tests/*`, and the boot info to get the firmware to its reset vector without re-flashing.
+ */
+function useSession(s: Session | null) {
+  for (const [name, el] of elements) {
+    if (COMPONENTS[name]?.needs !== 'session') continue;
+    el.session = s;
+    el.bootInfo = lastBootInfo;
+  }
 }
 
 function renderBreakpointGlyphs() {
@@ -416,13 +481,24 @@ async function connectReal(kind: 'launch' | 'attach') {
   if (elf && kind === 'launch') {
     const t0 = performance.now();
     // `target`: the chip's default image format (IDF with bootloader on ESP32 chips, ELF elsewhere).
-    await session.flash({ image: elf.bytes, name: elf.name, format: 'target', options: { verify: true } });
+    // Keep what flashing returns: it is how the test runner gets the firmware to its reset
+    // vector, so a suite can be listed without flashing a second time.
+    lastBootInfo = await session.flash({ image: elf.bytes, name: elf.name, format: 'target', options: { verify: true } });
     log(`flashed ${elf.name} in ${Math.round(performance.now() - t0)} ms`, 'gray');
   }
   const d = session.debugger();
   if (elf) await d.loadDebugInfo(elf.bytes, elf.name);
-  if (elf && elfHasRtt(elf.bytes)) await d.enableRtt({ elf: elf.bytes });
-  return { debugger: d as unknown as DebuggerLike, close: () => { client?.close(); client = null; session = null; } };
+  // Channels decode as text unless told otherwise, so the Plot panel's channel has to be
+  // declared here or it never sees a byte. (`packages/dap` takes the same list as its
+  // `rttChannels` launch argument, for a host that lets the adapter set RTT up.)
+  if (elf && elfHasRtt(elf.bytes)) {
+    await d.enableRtt({ elf: elf.bytes, channels: [{ channelNumber: plotChannel, dataFormat: 'BinaryLE' }] });
+  }
+  useSession(session);
+  return {
+    debugger: d as unknown as DebuggerLike,
+    close: () => { client?.close(); client = null; session = null; lastBootInfo = null; useSession(null); },
+  };
 }
 
 async function start(kind: 'launch' | 'attach') {
@@ -500,7 +576,8 @@ async function reflash() {
     const d = currentDebugger;
     log(`${artifact.name} changed: re-flashing`, 'cyan');
     if (d.state !== 'halted') await d.pause();
-    await session.flash({ image: bytes, name: artifact.name, format: 'target', options: { verify: true } });
+    lastBootInfo = await session.flash({ image: bytes, name: artifact.name, format: 'target', options: { verify: true } });
+    useSession(session);
     await d.loadDebugInfo(bytes, artifact.name);
     await d.resetAndHalt();
     await d.continue();
@@ -607,7 +684,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * active (source and console aside), so a panel that a restored layout left in a background tab has
  * no DOM until it is shown - which is also what a user does before reading it.
  */
-async function show(name: string): Promise<(HTMLElement & { debugger: Debugger | null }) | undefined> {
+async function show(name: string): Promise<PanelElement | undefined> {
   dock.getPanel(name)?.api.setActive();
   await sleep(150);
   return elements.get(name);
@@ -631,6 +708,23 @@ if (qs.has('auto')) {
       const bpLine = Number(qs.get('bp') ?? 40);
       const d = await start('launch');
       const srcPath = qs.get('srcPath') ?? 'src/main.rs';
+
+      // ?tests=1: an embedded-test binary has none of the debug firmware's symbols, so the
+      // checks below would all fail on it. This is a mode of its own, not an extra check.
+      if (qs.has('tests')) {
+        const runner = (await show('tests')) as unknown as import('@probe-web/ui').ProbeTestRunner | undefined;
+        await runner?.list();
+        check('tests panel lists the suite', (runner?.summary.total ?? 0) > 0, `${runner?.summary.total ?? 0} test(s)`);
+        await runner?.runAll();
+        const summary = runner?.summary;
+        check('tests panel runs the suite', !!summary && summary.failed === 0 && summary.passed > 0, JSON.stringify(summary));
+        await stop();
+        const ok = results.every((r) => r[1]);
+        log(`WORKBENCH_RESULT=${ok ? 'PASS' : 'FAIL'} in ${Math.round(performance.now() - t0)} ms`, ok ? 'green' : 'red');
+        (window as unknown as { workbenchResult: unknown }).workbenchResult = { ok, results };
+        return;
+      }
+
       const res = await dap!.request<DP.SetBreakpointsResponse>('setBreakpoints', { source: { path: srcPath }, breakpoints: [{ line: bpLine }] });
       check('breakpoint verified', res.body.breakpoints[0]?.verified === true, JSON.stringify(res.body.breakpoints[0]));
       const stopped = new Promise<void>((r) => { const off = dap!.on('stopped', () => { off(); r(); }); });
@@ -678,6 +772,25 @@ if (qs.has('auto')) {
       check('continue (Run panel) stops at the gutter breakpoint', source.pcLine === later, `pc line ${source.pcLine}`);
       check('first breakpoint removed from the gutter', !source.breakpointLines().includes(bpLine), JSON.stringify(source.breakpointLines()));
       check('console shows the adapter output', consoleView.lines.some((l) => l.includes('probe-rs: launched')), consoleView.lines.slice(0, 3).join(' | '));
+
+      // The Plot panel: the firmware's binary channel has to reach it while the core runs.
+      // Only checked when asked for (`?plot=1`), since an ordinary firmware writes nothing
+      // to a second channel and the panel would be empty for a good reason.
+      if (qs.has('plot')) {
+        const plot = (await show('plot')) as unknown as import('@probe-web/ui').ProbeRttPlot | undefined;
+        // Drop every breakpoint the earlier checks left: samples only arrive while the core
+        // runs, and a `continue` into a breakpoint halts again within a few instructions.
+        // Both paths matter — the checks set some by the requested path and some through the
+        // gutter, which uses the absolute path out of the DWARF.
+        for (const path of new Set([srcPath, source.path].filter(Boolean) as string[])) {
+          await dap!.request('setBreakpoints', { source: { path }, breakpoints: [] });
+        }
+        await dap!.request('continue', { threadId: 1 });
+        const deadline = performance.now() + 20_000;
+        while ((plot?.samples.length ?? 0) < 4 && performance.now() < deadline) await sleep(250);
+        check('plot panel receives samples from the binary channel', (plot?.samples.length ?? 0) >= 4, `${plot?.samples.length ?? 0} sample(s): ${plot?.samples.join(',') ?? ''}`);
+      }
+
       await stop();
     } catch (e) {
       check('no errors', false, (e as Error).stack ?? String(e));
