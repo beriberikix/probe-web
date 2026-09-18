@@ -16,7 +16,12 @@ test('target picker searches the registry, shows chip info, imports YAML', async
   await expect(picker).toContainText('PROGRAM_FLASH');
   await expect(picker).toContainText('Nvm');
   // Import a renamed copy of the MCXA family; it must show up in the registry.
-  await picker.locator('input[type=file]').setInputFiles('apps/flash/public/targets/test-family.yaml');
+  // The importer is a no-op without a client, and a file input's change event is lost if the
+  // element is re-rendered under it — so check it is live, then that the handler actually ran.
+  const fileInput = picker.locator('input[type=file]');
+  await expect(fileInput).toBeEnabled();
+  await fileInput.setInputFiles('apps/flash/public/targets/test-family.yaml');
+  await expect(picker).toContainText(/importing test-family.yaml|imported test-family.yaml/);
   await expect(picker).toContainText(/imported test-family.yaml: 1 new family/);
   await picker.locator('input[type=text]').fill('MCXA153-imported');
   await expect(picker.locator('li', { hasText: 'MCXA153-imported' })).toHaveCount(1);
