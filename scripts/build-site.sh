@@ -5,19 +5,25 @@
 #
 #   ./scripts/build-site.sh [base]     base defaults to / (use /probe-web/ for project Pages)
 #
-# Run scripts/build-wasm.sh first; this only bundles what is already built.
+# Run scripts/build-wasm.sh first (and scripts/build-firmware.sh for the demo images); this
+# only bundles what is already built.
 set -e
 cd "$(dirname "$0")/.."
 base=${1:-/}
 out=$(pwd)/site
 
-rm -rf "$out"
-npx vite build apps/flash --base "$base" --outDir "$out" --emptyOutDir
+# One build for all four apps (vite.site.config.ts), so the 12.6 MB worker and the client wasm
+# are emitted once and shared instead of once per app.
+npx vite build --config vite.site.config.ts --base "$base"
+
+# Vite writes each entry's HTML under its source path; move them where they are served from.
+# Asset URLs inside are absolute (they start with `base`), so moving the files is safe.
+mv "$out/apps/flash/index.html" "$out/index.html"
 for app in inspect:apps/inspect workbench:apps/workbench monaco-ide:examples/monaco-ide; do
-  name=${app%%:*}
-  dir=${app#*:}
-  npx vite build "$dir" --base "$base$name/" --outDir "$out/$name" --emptyOutDir
+  mkdir -p "$out/${app%%:*}"
+  mv "$out/${app#*:}/index.html" "$out/${app%%:*}/index.html"
 done
+rm -rf "$out/apps" "$out/examples"
 
 # Pages serves this as-is; without it Jekyll drops files and directories beginning with _.
 touch "$out/.nojekyll"

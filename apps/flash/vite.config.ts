@@ -18,7 +18,7 @@ function siblingApps(): Plugin {
         const path = (req.url ?? '').split('?')[0].replace(/\/$/, '');
         const dir = apps[path];
         if (!dir) return next();
-        const html = readFileSync(`${dir}index.html`, 'utf8').replace('src="/src/main.ts"', `src="/@fs${dir}src/main.ts"`);
+        const html = readFileSync(`${dir}index.html`, 'utf8').replace('src="./src/main.ts"', `src="/@fs${dir}src/main.ts"`);
         res.setHeader('Content-Type', 'text/html');
         res.end(await server.transformIndexHtml(req.url ?? path + '/', html));
       });
