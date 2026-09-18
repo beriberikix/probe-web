@@ -20,11 +20,12 @@ stepping, call stack, variables, registers, SVD peripherals.
 | | |
 |---|---|
 | `packages/client` | The SDK: probes, chips, flashing, RTT, memory, and a `Debugger` that owns one core's debug state. Runs in the browser and in Node. |
-| `packages/ui` | Lit components — device picker, flash panel, RTT terminal, core controls, registers, call stack, variables, breakpoints, disassembly, memory view, peripherals. Each works on its own. |
+| `packages/ui` | Lit components — device picker, flash panel, RTT terminal, RTT plot, core controls, registers, call stack, variables, breakpoints, disassembly, memory view, peripherals, test runner. Each works on its own. |
 | `packages/dap` | A Debug Adapter Protocol adapter over the SDK, for VS Code web, Theia, or a Monaco editor. |
 | `packages/devices`, `packages/artifacts`, `packages/serial` | WebUSB device lifecycle, firmware files (including File System Access with re-flash on rebuild), and a WebSerial monitor. |
 | `crates/probe-web-core` | The RPC client compiled to wasm, plus defmt decoding. |
 | `crates/probe-web-local` | probe-rs in a Worker: the RPC server the WebUSB transport talks to. |
+| `crates/probe-web-targets` | CMSIS-Pack and `.FLM` ingestion: a vendor pack becomes probe-rs target YAML in the browser, so a chip probe-rs does not ship can still be flashed. |
 | `apps/flash` | A single-target flasher page. |
 | `apps/workbench` | Flash and debug in one page: dockable panels, Monaco, xterm. |
 | `apps/inspect` | probe-rs `info` in a page: DP, APs, ROM tables. |
