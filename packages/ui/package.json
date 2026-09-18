@@ -18,7 +18,8 @@
     "./disassembly": "./src/disassembly.ts",
     "./memory-view": "./src/memory-view.ts",
     "./peripherals": "./src/peripherals.ts",
-    "./test-runner": "./src/test-runner.ts"
+    "./test-runner": "./src/test-runner.ts",
+    "./rtt-plot": "./src/rtt-plot.ts"
   },
   "dependencies": {
     "@probe-web/client": "*",

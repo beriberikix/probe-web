@@ -80,7 +80,9 @@ try {
   check('initialize: capabilities', !!init.body?.supportsDisassembleRequest && !!init.body.supportsInstructionBreakpoints);
 
   const initialized = nextEvent('initialized', 30000);
-  await request('launch', { url: args.url, token: args.token, probe: args.probe, chip: args.chip, protocol: args.protocol, format: args.format, program: new Uint8Array(await readFile(args.elf)) });
+  // The firmware writes samples to channel 1; say so, or those bytes are decoded as text
+  // and land in the same stdout stream as the `n=… result=…` lines this checks.
+  await request('launch', { url: args.url, token: args.token, probe: args.probe, chip: args.chip, protocol: args.protocol, format: args.format, program: new Uint8Array(await readFile(args.elf)), rttChannels: [{ channelNumber: 1, dataFormat: 'BinaryLE' }] });
   await initialized;
   console.log(`[${since()}] launched (flashed + debug info)`);
 

@@ -61,15 +61,29 @@ pub fn step_a(n: u32) -> i32 {
 #[entry]
 fn main() -> ! {
     let channels = rtt_init! {
-        up: { 0: { size: 512, name: "Terminal" } }
+        up: {
+            0: { size: 512, name: "Terminal" }
+            // A second, binary channel carrying one `u32` per iteration, little-endian,
+            // so `<probe-rtt-plot>` has a real signal to draw. A triangle wave rather
+            // than a counter: a wrong sample width or a dropped byte is obvious on a
+            // shape that goes up and down, and invisible on one that only climbs.
+            1: { size: 256, name: "Samples" }
+        }
     };
     let mut up = channels.up.0;
+    let mut samples = channels.up.1;
     writeln!(up, "{}: n, step_a(n) every ~0.5 s; TABLE[1] = {:#x}", black_box(GREETING), TABLE[1]).ok();
     let mut n: u32 = 0;
     loop {
         n = n.wrapping_add(1);
         let result = step_a(black_box(n));
         writeln!(up, "n={} result={}", n, result).ok();
+        // 0, 1, … 7, 8, 7, … 1, 0, 1, … — period 16, amplitude 8. Short on purpose: a
+        // check that only ever sees the rising edge cannot tell a triangle from a plain
+        // counter, and the turn is what proves the samples are being framed correctly.
+        let phase = n % 16;
+        let wave: u32 = if phase <= 8 { phase } else { 16 - phase };
+        samples.write(&wave.to_le_bytes());
         cortex_m::asm::delay(4_000_000);
     }
 }
