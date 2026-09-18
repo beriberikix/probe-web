@@ -373,7 +373,7 @@ Debugging over WebUSB - probe-rs compiled to wasm in a Worker, no server - works
 | Load ELF + rich stack trace | ✓ | ✓ | ✓ (named frames to the trampoline, then ROM frames) | — |
 | Components page `debug.html?auto=1&transport=webusb` | 13/13 | 13/13 | n/a (Cortex-M page) | Playwright 24/24 |
 | Source breakpoints, step over/into | ✓ | ✓ | ✓ | — |
-| Step out | ✓ | ✓ | **✗ (lands in the entry trampoline)** | — |
+| Step out | ✓ | ✓ | ✓ (SDK runs to the caller; see 2026-09-18) | vitest |
 | Scopes, variables, evaluate, set_variable | ✓ | ✓ | ✓ (`point = {x: 1, y: 2}`) | fake worker |
 | RTT while debugging | ✓ | ✓ | ✓ | — |
 | Semihosting as `output` events | — | ✓ 2/2 | — | — |
@@ -382,9 +382,13 @@ Debugging over WebUSB - probe-rs compiled to wasm in a Worker, no server - works
 | Disassembly reports "not available" | ✓ | ✓ | ✓ | Playwright |
 | WebSocket regressions (Node `debug.ts`, `dap.ts`, components page, workbench, Monaco IDE) | 41/41, PASS, 13/13, 11/11, PASS | PASS, PASS, —, —, — | — | — |
 
-Known gaps, both in the fork's `probe-rs-debug` and Xtensa-only:
-- **Step out on Xtensa** lands in `__xtensa_lx_rt_main_trampoline` instead of the caller, and frames past the first caller repeat (`step_b ← step_a ← step_a ← …`). Porting b33b226f and adding master's `spill_registers` hook did not change it (the fork already spills before every memory read); a0 is simply never restored per frame during the unwind. Over WebSocket the same firmware unwinds correctly, so nothing outside the fork is affected.
-- The fork's Xtensa unwinder walks past the entry trampoline into ROM frames, where master stops at `Reset`.
+Both Xtensa gaps this table originally recorded were fixed on 2026-09-18 (see the entries below):
+stack traces no longer repeat the first caller (fork `f89910e3`: each frame's registers are
+recovered from the register-spill area), and step out reaches the caller (the SDK runs to the
+return address the stack trace gives, because probe-rs's own step out is still wrong there).
+
+Remaining, Xtensa-only: the unwinder walks past the entry trampoline into ROM frames, where
+master stops at `Reset` — cosmetic, the named frames above it are correct.
 
 Hardening fixed during this phase: a probe left mid-command by a page that went away used to stay unusable until something opened it natively (CMSIS-DAP: read timeouts and replies one behind; ESP-USB-JTAG: `JtagScanChain(InvalidIdCode)`). `probe/attach` in the worker now reopens the probe and retries once, and CMSIS-DAP additionally resynchronises replies and health-checks the probe when opening. Hardware breakpoints are cleared on attach, so an aborted debug session no longer breaks the next flash.
 
