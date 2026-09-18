@@ -11,7 +11,7 @@ import { describe, grantedDevices, hasWebUsb, onDevicesChanged, requestProbe } f
  * @fires probe-selected - A probe was chosen (by a click, or automatically when it is
  *   the only one). `detail` is the `Wire.DebugProbeEntry`; pass it to `client.attach()`.
  * @fires device-authorized - The user granted a new WebUSB device through the browser's
- *   chooser. `detail` is its `ProbeDescription` from `@probe-web/devices`. Does not bubble.
+ *   chooser. `detail` is its `ProbeDescription` from `@probe-web/devices`.
  *
  * @example
  * ```html
@@ -83,7 +83,7 @@ export class ProbeDevicePicker extends LitElement {
       const d = await requestProbe();
       this.error = null;
       const desc = describe(d);
-      this.dispatchEvent(new CustomEvent('device-authorized', { detail: desc }));
+      this.dispatchEvent(new CustomEvent('device-authorized', { detail: desc, bubbles: true, composed: true }));
       await this.refresh();
     } catch (e) {
       this.error = String((e as Error).message ?? e);

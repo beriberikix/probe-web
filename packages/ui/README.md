@@ -3,11 +3,11 @@
 Framework-agnostic web components (Lit) for flashing and debugging embedded targets
 from a browser, built on [`@probe-web/client`](https://github.com/beriberikix/probe-web/tree/main/packages/client). Each element takes a
 `client`, `session` or `debugger` property, works on its own, and reports what happens
-through DOM events (they bubble and cross shadow roots unless noted).
+through DOM events, which bubble and cross shadow roots.
 
 | Element | Purpose | Key events |
 |---|---|---|
-| `<probe-device-picker>` | List the client's probes; authorize a new WebUSB device | `probe-selected`, `device-authorized` (does not bubble) |
+| `<probe-device-picker>` | List the client's probes; authorize a new WebUSB device | `probe-selected`, `device-authorized` |
 | `<probe-target-picker>` | Search the chip registry; import target YAML, CMSIS `.pack` or `.FLM` | `chip-selected`, `family-imported`, `svds-found` |
 | `<probe-flash-panel>` | Pick or watch an image, flash with live progress, verify, erase | `flash-done`, `flash-failed`, `verify-done`, `erase-done`, `artifact-changed` |
 | `<probe-rtt-terminal>` | xterm.js terminal running the monitor loop: RTT (String or defmt), semihosting; typed input to down channel 0 | `monitor-event`, `monitor-exit` |
