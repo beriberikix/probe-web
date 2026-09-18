@@ -1,0 +1,170 @@
+//! Splitting a flash-algorithm ELF into the `PrgCode` / `PrgData` / bss sections that
+//! probe-rs loads into RAM.
+//!
+//! Ported unchanged from `target-gen/src/algorithm_binary.rs` on the fork
+//! (`beriberikix/probe-rs@webusb/nusb-0.2.7`). Pure: it only ever reads the buffer we
+//! give it.
+
+use goblin::{
+    elf::program_header::PT_LOAD,
+    elf64::section_header::{SHT_NOBITS, SHT_PROGBITS},
+};
+use probe_rs_target::MemoryRange;
+
+use anyhow::{Result, anyhow};
+
+const CODE_SECTION_KEY: (&str, u32) = ("PrgCode", SHT_PROGBITS);
+const DATA_SECTION_KEY: (&str, u32) = ("PrgData", SHT_PROGBITS);
+const BSS_SECTION_KEY: (&str, u32) = ("PrgData", SHT_NOBITS);
+
+/// List of "suspicious" section names
+///
+/// These sections are usually present in Rust/C binaries,
+/// but should not be present in flash loader binaries.
+///
+/// If these are observed in the binary, we issue a warning.
+const SUSPICIOUS_SECTION_NAMES: &[&str] = &[".text", ".rodata", ".data", ".sdata", ".bss", ".sbss"];
+
+/// An ELF section of the flash algorithm ELF.
+#[derive(Debug, Clone)]
+pub(crate) struct Section {
+    pub(crate) start: u32,
+    pub(crate) length: u32,
+    pub(crate) data: Vec<u8>,
+
+    /// Load address for this section.
+    ///
+    /// For position independent code, this will not be used.
+    pub(crate) load_address: u32,
+}
+
+/// A struct to hold all the binary sections of a flash algorithm ELF that go into flash.
+#[derive(Debug, Clone)]
+pub(crate) struct AlgorithmBinary {
+    pub(crate) code_section: Section,
+    pub(crate) data_section: Section,
+    pub(crate) bss_section: Section,
+}
+
+impl AlgorithmBinary {
+    /// Extract a new flash algorithm binary blob from an ELF data blob.
+    pub(crate) fn new(elf: &goblin::elf::Elf<'_>, buffer: &[u8]) -> Result<Self> {
+        let mut code_section = None;
+        let mut data_section = None;
+        let mut bss_section = None;
+
+        let mut suspicious_sections = Vec::new();
+
+        // Iterate all program headers and get sections.
+        for ph in &elf.program_headers {
+            // Only regard sections that contain at least one byte.
+            // And are marked loadable (this filters out debug symbols).
+            if ph.p_type == PT_LOAD && ph.p_memsz > 0 {
+                let sector = ph.p_offset..ph.p_offset + ph.p_memsz;
+
+                log::debug!("Program header: LOAD to VMA {:#010x}", ph.p_vaddr);
+
+                // Scan all sectors if they contain any part of the sections found.
+                for sh in &elf.section_headers {
+                    let range = sh.sh_offset..sh.sh_offset + sh.sh_size;
+                    if sector.contains_range(&range) {
+                        // If we found a valid section, store its contents if any.
+                        let data = if sh.sh_type == SHT_NOBITS {
+                            Vec::new()
+                        } else {
+                            Vec::from(&buffer[sh.sh_offset as usize..][..sh.sh_size as usize])
+                        };
+
+                        let section = Some(Section {
+                            start: sh.sh_addr as u32,
+                            length: sh.sh_size as u32,
+                            data,
+                            load_address: (ph.p_vaddr + sh.sh_offset - ph.p_offset) as u32,
+                        });
+
+                        // Make sure we store the section contents under the right name.
+                        match (&elf.shdr_strtab[sh.sh_name], sh.sh_type) {
+                            CODE_SECTION_KEY => code_section = section,
+                            DATA_SECTION_KEY => data_section = section,
+                            BSS_SECTION_KEY => bss_section = section,
+                            (name, _section_type) => {
+                                if SUSPICIOUS_SECTION_NAMES.contains(&name) {
+                                    suspicious_sections.push(name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !suspicious_sections.is_empty() {
+            log::warn!(
+                "The ELF file contains some unexpected sections, which should not be part of a flash loader: "
+            );
+
+            for section in suspicious_sections {
+                log::warn!("\t{}", section);
+            }
+
+            log::warn!(
+                "Code should be placed in the '{}' section, and data should be placed in the '{}' section.",
+                CODE_SECTION_KEY.0,
+                DATA_SECTION_KEY.0
+            );
+        }
+
+        // Check all the sections for validity and return the binary blob if possible.
+        let code_section = code_section.ok_or_else(|| {
+            anyhow!(
+                "Section '{}' not found, which is required to be present.",
+                CODE_SECTION_KEY.0
+            )
+        })?;
+
+        let data_section = data_section.unwrap_or_else(|| Section {
+            start: code_section.start + code_section.length,
+            length: 0,
+            data: Vec::new(),
+            load_address: code_section.load_address + code_section.length,
+        });
+
+        let zi_start = data_section.start + data_section.length;
+        let zi_address = data_section.load_address + data_section.length;
+
+        Ok(Self {
+            code_section,
+            data_section,
+            bss_section: bss_section.unwrap_or_else(|| Section {
+                start: zi_start,
+                length: 0,
+                data: Vec::new(),
+                load_address: zi_address,
+            }),
+        })
+    }
+
+    /// Assembles one huge binary blob as u8 values to write to RAM from the three sections.
+    pub(crate) fn blob(&self) -> Vec<u8> {
+        let mut blob = Vec::new();
+
+        blob.extend(&self.code_section.data);
+        blob.extend(&self.data_section.data);
+        blob.extend(&vec![0; self.bss_section.length as usize]);
+
+        blob
+    }
+
+    /// The current implementation assumes that all three sections follow each other
+    /// directly in RAM.
+    ///
+    /// This is especially important when the code is not position independent,
+    /// since it depends on the linker in this case. If the code *is* position independent,
+    /// it can be freely rearranged, and this is not an issue.
+    pub(crate) fn is_continuous_in_ram(&self) -> bool {
+        (self.code_section.load_address + self.code_section.length
+            == self.data_section.load_address)
+            && (self.data_section.load_address + self.data_section.length
+                == self.bss_section.load_address)
+    }
+}

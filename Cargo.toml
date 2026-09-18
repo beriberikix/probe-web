@@ -26,3 +26,12 @@ console_error_panic_hook = "0.1"
 opt-level = "s"
 lto = true
 codegen-units = 1
+
+# Upstream cmsis-pack (pyocd/cmsis-pack-manager) declares reqwest and tokio
+# unconditionally, so the crate does not compile for wasm32 at all -- even though only
+# its `update` module needs them. The fork gates that module behind a default-on
+# `update` feature, leaving the .pdsc parser buildable with `default-features = false`.
+# The change is upstreamable; until it lands, the patch redirects the crates.io name.
+# For local work against a checkout, see .cargo/config.toml.
+[patch.crates-io]
+cmsis-pack = { git = "https://github.com/beriberikix/cmsis-pack-manager", branch = "wasm/optional-network" }
