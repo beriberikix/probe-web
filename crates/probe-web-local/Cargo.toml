@@ -23,6 +23,8 @@ probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm
 # The fork's async DWARF layer (stack traces, variables, breakpoints, stepping) for debugging in the worker.
 probe-rs-debug = { git = "https://github.com/beriberikix/probe-rs", branch = "webusb/nusb-0.2.7" }
 # Same version as the fork's probe-rs-debug (source paths in breakpoint requests).
+# embedded-test hands its test list over semihosting as JSON.
+serde_json = "1"
 typed-path = "0.11"
 # Same version as probe-rs serve (CMSIS-SVD peripherals in the Peripherals scope).
 svd-parser = { version = "=0.14.10", features = ["expand"] }

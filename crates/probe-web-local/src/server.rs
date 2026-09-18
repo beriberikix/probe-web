@@ -26,17 +26,17 @@ use probe_rs_rpc::{
     CoreSetHwBpsEndpoint, CoreStatusEndpoint, CoreStepEndpoint, CoreWriteRegEndpoint,
     CoresStatusEndpoint, CreateRttClientEndpoint, CreateTempFileEndpoint, ENDPOINT_LIST,
     EraseAllEndpoint, EvaluateEndpoint, FlashEndpoint, GetRttChannelsEndpoint, HaltCoresEndpoint,
-    HandleSemihostingEndpoint, ListChipFamiliesEndpoint, ListProbesEndpoint,
+    HandleSemihostingEndpoint, ListChipFamiliesEndpoint, ListProbesEndpoint, ListTestsEndpoint,
     LoadChipFamilyEndpoint, LoadDebugInfoEndpoint, LoadRegionEndpoint, LoadSvdEndpoint,
     MonitorEndpoint, NewFlashLoaderEndpoint, NoResponse, PollRttUpEndpoint, ProgressEventTopic,
     ReadBytesEndpoint, ReadMemory8Endpoint, ReadMemory16Endpoint, ReadMemory32Endpoint,
     ReadMemory64Endpoint, ResetCoreAndHaltEndpoint, ResetCoreEndpoint,
     ResolveSourceBreakpointsEndpoint, ResolveSourceLocationsEndpoint, ResumeCoresEndpoint,
-    RpcError, RpcResult, RttDownEndpoint, RttTopic, ScopesEndpoint, SemihostingTopic, Session,
-    SetVariableEndpoint, TOPICS_IN_LIST, TOPICS_OUT_LIST, TakeRichStackTraceEndpoint,
-    TargetInfoEndpoint, TargetMetadataEndpoint, TempFileDataEndpoint, TokioSpawner,
-    VariablesEndpoint, VerifyEndpoint, WriteMemory8Endpoint, WriteMemory16Endpoint,
-    WriteMemory32Endpoint, WriteMemory64Endpoint,
+    RpcError, RpcResult, RttDownEndpoint, RttTopic, RunTestEndpoint, ScopesEndpoint,
+    SemihostingTopic, Session, SetVariableEndpoint, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    TakeRichStackTraceEndpoint, TargetInfoEndpoint, TargetMetadataEndpoint, TempFileDataEndpoint,
+    TestKickoffEndpoint, TokioSpawner, VariablesEndpoint, VerifyEndpoint, WriteMemory8Endpoint,
+    WriteMemory16Endpoint, WriteMemory32Endpoint, WriteMemory64Endpoint,
     chip::{
         Chip, ChipData, ChipFamily, ChipInfoRequest, ChipInfoResponse, JEP106Code,
         ListFamiliesResponse, LoadChipFamilyRequest,
@@ -67,6 +67,10 @@ use probe_rs_rpc::{
         RttDownRequest, RttDownResponse, RttPollResult,
     },
     rtt_config::{ChannelMode, RttChannelConfig},
+    test::{
+        ListTestsRequest, ListTestsResponse, RunTestRequest, RunTestResponse, TestKickoffRequest,
+        TestKickoffResponse,
+    },
     transport::memory::WireTx,
 };
 use tokio::sync::{Mutex, mpsc::Sender};
@@ -429,6 +433,40 @@ async fn load_chip_family(ctx: &mut Ctx, _h: VarHeader, req: LoadChipFamilyReque
     inner.family_yamls.push(req.families_yaml);
     inner.registry = Arc::new(next);
     Ok(())
+}
+
+// ---------------------------------------------------------------- embedded-test
+
+async fn list_tests(ctx: &mut Ctx, _h: VarHeader, req: ListTestsRequest) -> ListTestsResponse {
+    let mut inner = ctx.inner.lock().await;
+    let session = inner.session(req.sessid)?;
+    // The firmware has to be on the chip and at its reset vector before it can be asked
+    // anything, which is what `boot_info` describes.
+    prepare_boot(session, &req.boot_info, 0).await?;
+    let mut core = session.core(0).await.map_err(err)?;
+    crate::tests::list_tests(&mut core).await.map_err(err)
+}
+
+async fn run_test(ctx: &mut Ctx, _h: VarHeader, req: RunTestRequest) -> RunTestResponse {
+    let mut inner = ctx.inner.lock().await;
+    let session = inner.session(req.sessid)?;
+    let mut core = session.core(0).await.map_err(err)?;
+    crate::tests::run_test(&mut core, req.test)
+        .await
+        .map_err(err)
+}
+
+async fn test_kickoff(
+    ctx: &mut Ctx,
+    _h: VarHeader,
+    req: TestKickoffRequest,
+) -> TestKickoffResponse {
+    let mut inner = ctx.inner.lock().await;
+    let session = inner.session(req.sessid)?;
+    let mut core = session.core(req.core as usize).await.map_err(err)?;
+    crate::tests::kickoff(&mut core, req.address)
+        .await
+        .map_err(err)
 }
 
 // ---------------------------------------------------------------- files (virtual)
@@ -1529,6 +1567,21 @@ pub const LOCAL_ENDPOINT_LIST: postcard_rpc::EndpointMap = postcard_rpc::Endpoin
             <ResolveSourceLocationsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
         ),
         (
+            <ListTestsEndpoint as postcard_rpc::Endpoint>::PATH,
+            <ListTestsEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <ListTestsEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <RunTestEndpoint as postcard_rpc::Endpoint>::PATH,
+            <RunTestEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <RunTestEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
+            <TestKickoffEndpoint as postcard_rpc::Endpoint>::PATH,
+            <TestKickoffEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
+            <TestKickoffEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
+        ),
+        (
             <EvaluateEndpoint as postcard_rpc::Endpoint>::PATH,
             <EvaluateEndpoint as postcard_rpc::Endpoint>::REQ_KEY,
             <EvaluateEndpoint as postcard_rpc::Endpoint>::RESP_KEY,
@@ -1633,6 +1686,9 @@ postcard_rpc::define_dispatch! {
         | SetVariableEndpoint | async | set_variable |
         | LoadSvdEndpoint | async | load_svd |
         | CoreDumpEndpoint | async | core_dump |
+        | ListTestsEndpoint | async | list_tests |
+        | RunTestEndpoint | async | run_test |
+        | TestKickoffEndpoint | async | test_kickoff |
         | PollRttUpEndpoint | async | poll_rtt_up |
         | CleanUpRttEndpoint | async | clean_up_rtt |
         | HandleSemihostingEndpoint | async | handle_semihosting |

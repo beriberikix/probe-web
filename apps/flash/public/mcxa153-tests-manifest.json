@@ -1,0 +1,15 @@
+{
+  "name": "FRDM-MCXA153 embedded-test suite",
+  "chip": "MCXA153",
+  "protocol": "Swd",
+  "images": [
+    {
+      "url": "firmware/mcxa153-tests.elf",
+      "format": "elf",
+      "name": "mcxa153-tests.elf"
+    }
+  ],
+  "options": {
+    "verify": true
+  }
+}

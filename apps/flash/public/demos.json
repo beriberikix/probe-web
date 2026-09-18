@@ -4,6 +4,10 @@
     "label": "FRDM-MCXA153 \u2014 debug target"
   },
   {
+    "manifest": "mcxa153-tests-manifest.json",
+    "label": "FRDM-MCXA153 \u2014 embedded-test suite"
+  },
+  {
     "manifest": "rtt-manifest.json",
     "label": "FRDM-MCXA153 \u2014 defmt RTT"
   },
@@ -14,6 +18,10 @@
   {
     "manifest": "nrf9160-debug-manifest.json",
     "label": "Thingy:91 nRF9160 \u2014 debug target"
+  },
+  {
+    "manifest": "nrf9160-tests-manifest.json",
+    "label": "Thingy:91 nRF9160 \u2014 embedded-test suite"
   },
   {
     "manifest": "nrf-rtt-manifest.json",

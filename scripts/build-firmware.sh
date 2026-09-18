@@ -54,6 +54,15 @@ for board in mcxa153 nrf9160; do
     "$out/$board-debug.elf"
 done
 
+# The embedded-test suite, for the test runner. It is a `cargo test` binary, not a normal
+# one, so it lands in deps/ under a hashed name -- take the newest and drop the .d file.
+for board in mcxa153 nrf9160; do
+  build_firmware cm33-tests --features "$board" --target-dir "target/$board" --tests
+  suite=$(ls -t "hardware-tests/firmware/cm33-tests/target/$board/thumbv8m.main-none-eabi/release/deps/suite-"* \
+    | grep -v '\.d$' | head -1)
+  cp "$suite" "$out/$board-tests.elf"
+done
+
 # The RTT, semihosting and UART-echo images the other demo manifests point at.
 for fw in mcxa153-rtt nrf9160-rtt-echo nrf9160-semihosting nrf9160-uart-echo; do
   build_firmware "$fw"
@@ -68,10 +77,12 @@ if [ "$1" = "--esp32s3" ]; then
 fi
 
 # The sources those remapped DWARF paths name, so the deployed workbench can show code.
-for crate in cm33-debug esp32s3-debug mcxa153-rtt nrf9160-rtt-echo nrf9160-semihosting nrf9160-uart-echo; do
-  [ -d "hardware-tests/firmware/$crate/src" ] || continue
-  mkdir -p "$out/src/$crate"
-  cp -R "hardware-tests/firmware/$crate/src" "$out/src/$crate/"
+for crate in cm33-debug cm33-tests esp32s3-debug mcxa153-rtt nrf9160-rtt-echo nrf9160-semihosting nrf9160-uart-echo; do
+  for dir in src tests; do
+    [ -d "hardware-tests/firmware/$crate/$dir" ] || continue
+    mkdir -p "$out/src/$crate"
+    cp -R "hardware-tests/firmware/$crate/$dir" "$out/src/$crate/"
+  done
 done
 
 ls -la "$out"

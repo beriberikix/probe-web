@@ -194,6 +194,54 @@ impl ProbeWebClient {
     }
 }
 
+/// Render a monitor event as the JS object the SDK documents.
+///
+/// Shared by `monitor`, `listTests` and `runTest`: all three stream the same RTT and
+/// semihosting traffic, and an `embedded-test` run is mostly console output.
+fn monitor_event_to_js(
+    rtt: &Rc<RefCell<Option<RttState>>>,
+    msg: MonitorEvent,
+) -> Result<JsValue, JsValue> {
+    match msg {
+        MonitorEvent::Rtt(RttEvent::Discovered {
+            up_channels,
+            down_channels,
+        }) => {
+            #[derive(serde::Serialize)]
+            struct Discovered<'a> {
+                kind: &'static str,
+                up: &'a [probe_rs_rpc::monitor::ChannelInfo],
+                down: &'a [probe_rs_rpc::monitor::ChannelInfo],
+            }
+            to_js(&Discovered {
+                kind: "rtt-discovered",
+                up: &up_channels,
+                down: &down_channels,
+            })
+        }
+        MonitorEvent::Rtt(RttEvent::Output { channel, bytes }) => {
+            let mut rtt = rtt.borrow_mut();
+            match rtt.as_mut() {
+                Some(state) => to_js(&state.decoders.decode(channel, &bytes)),
+                None => to_js(&rtt::RttOutput::Bytes { channel, bytes }),
+            }
+        }
+        MonitorEvent::Semihosting(SemihostingEvent::Output { stream, data }) => {
+            #[derive(serde::Serialize)]
+            struct Semi {
+                kind: &'static str,
+                stream: String,
+                data: String,
+            }
+            to_js(&Semi {
+                kind: "semihosting",
+                stream,
+                data,
+            })
+        }
+    }
+}
+
 struct RttState {
     key: probe_rs_rpc::Key<probe_rs_rpc::RttClient>,
     decoders: rtt::RttDecoders,
@@ -344,6 +392,53 @@ impl ProbeWebSession {
         state.decoders.set_elf(&elf).map_err(|e| error("defmt", e))
     }
 
+    /// The tests an `embedded-test` firmware declares.
+    ///
+    /// `bootInfo` says how to get the firmware to its reset vector, exactly as `monitor`
+    /// takes it. Console output produced while listing is forwarded to `onEvent`.
+    #[wasm_bindgen(js_name = listTests)]
+    pub async fn list_tests(
+        &self,
+        boot_info: JsValue,
+        on_event: js_sys::Function,
+    ) -> Result<JsValue, JsValue> {
+        let boot_info: BootInfo = from_js(boot_info)?;
+        let rtt_client = self.rtt.borrow().as_ref().map(|r| r.key);
+        let rtt = self.rtt.clone();
+        let tests = self
+            .session
+            .list_tests(boot_info, rtt_client, Default::default(), async |event| {
+                if let Ok(value) = monitor_event_to_js(&rtt, event) {
+                    let _ = on_event.call1(&JsValue::NULL, &value);
+                }
+            })
+            .await
+            .map_err(client_err)?;
+        to_js(&tests)
+    }
+
+    /// Run one test from `listTests` and resolve with its result.
+    #[wasm_bindgen(js_name = runTest)]
+    pub async fn run_test(
+        &self,
+        test: JsValue,
+        on_event: js_sys::Function,
+    ) -> Result<JsValue, JsValue> {
+        let test: probe_rs_rpc::test::Test = from_js(test)?;
+        let rtt_client = self.rtt.borrow().as_ref().map(|r| r.key);
+        let rtt = self.rtt.clone();
+        let result = self
+            .session
+            .run_test(test, rtt_client, Default::default(), async |event| {
+                if let Ok(value) = monitor_event_to_js(&rtt, event) {
+                    let _ = on_event.call1(&JsValue::NULL, &value);
+                }
+            })
+            .await
+            .map_err(client_err)?;
+        to_js(&result)
+    }
+
     /// Run the monitor loop: boot (or attach to a running target), stream RTT
     /// and semihosting output to `on_event`, resolve with the exit reason.
     /// `mode` is a `MonitorMode`; `options` carries the vector-catch flags.
@@ -378,44 +473,7 @@ impl ProbeWebSession {
         let exit = self
             .session
             .monitor(mode, options, async |msg| {
-                let v = match msg {
-                    MonitorEvent::Rtt(RttEvent::Discovered {
-                        up_channels,
-                        down_channels,
-                    }) => {
-                        #[derive(serde::Serialize)]
-                        struct Discovered<'a> {
-                            kind: &'static str,
-                            up: &'a [probe_rs_rpc::monitor::ChannelInfo],
-                            down: &'a [probe_rs_rpc::monitor::ChannelInfo],
-                        }
-                        to_js(&Discovered {
-                            kind: "rtt-discovered",
-                            up: &up_channels,
-                            down: &down_channels,
-                        })
-                    }
-                    MonitorEvent::Rtt(RttEvent::Output { channel, bytes }) => {
-                        let mut rtt = rtt.borrow_mut();
-                        match rtt.as_mut() {
-                            Some(state) => to_js(&state.decoders.decode(channel, &bytes)),
-                            None => to_js(&rtt::RttOutput::Bytes { channel, bytes }),
-                        }
-                    }
-                    MonitorEvent::Semihosting(SemihostingEvent::Output { stream, data }) => {
-                        #[derive(serde::Serialize)]
-                        struct Semi {
-                            kind: &'static str,
-                            stream: String,
-                            data: String,
-                        }
-                        to_js(&Semi {
-                            kind: "semihosting",
-                            stream,
-                            data,
-                        })
-                    }
-                };
+                let v = monitor_event_to_js(&rtt, msg);
                 if let Ok(v) = v {
                     let _ = on_event.call1(&JsValue::NULL, &v);
                 }
