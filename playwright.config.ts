@@ -5,6 +5,9 @@ const ci = !!process.env.CI;
 
 export default defineConfig({
   testDir: 'tests',
+  testIgnore: ['global-setup.ts'],
+  // Pay Vite's on-demand transform once, before any spec's clock starts.
+  globalSetup: './tests/global-setup.ts',
   timeout: 60_000,
   // On CI a failure is all we get to work with, so keep a trace and an HTML report (the
   // workflow uploads playwright-report/ when the job fails). One retry tells flaky from broken.
