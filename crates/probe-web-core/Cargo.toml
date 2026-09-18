@@ -17,6 +17,9 @@ probe-rs-rpc = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm
 probe-rs-rpc-client = { git = "https://github.com/beriberikix/probe-rs", branch = "wasm-rpc-client" }
 postcard-rpc = { version = "0.12", features = ["use-std"] }
 defmt-decoder = "1"
+# The encoding `probe_rs::CoreDump::store` writes, so a dump taken in the browser opens
+# in native probe-rs.
+rmp-serde = "1"
 object = { version = "0.40", default-features = false, features = ["read_core", "elf", "std"] }
 tokio = { version = "1", features = ["sync", "macros"] }
 serde = { workspace = true }

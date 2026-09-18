@@ -514,6 +514,27 @@ export class Core {
   writeMemory32(address: number | bigint, data: Uint32Array): Promise<void> {
     return this.raw.writeMemory32(BigInt(address), data);
   }
+
+  /**
+   * Registers plus the memory in `ranges`, as structured data.
+   *
+   * Ranges are `[start, end)` pairs. Reading is not free — the memory comes back over the
+   * probe — so ask for the regions you care about, typically the stack and any RAM a
+   * postmortem needs.
+   */
+  dumpCore(ranges: [number | bigint, number | bigint][]): Promise<Wire.WireCoreDump> {
+    return this.raw.dumpCore(ranges.map(([a, b]) => [BigInt(a), BigInt(b)])) as Promise<Wire.WireCoreDump>;
+  }
+
+  /**
+   * The same snapshot as a coredump *file*, in the encoding native `probe-rs` reads.
+   *
+   * Pair it with `downloadBytes` from `@probe-web/artifacts` to save it, then open it with
+   * the usual tools — a dump taken in a browser is not a dead end.
+   */
+  dumpCoreFile(ranges: [number | bigint, number | bigint][]): Promise<Uint8Array> {
+    return this.raw.dumpCoreFile(ranges.map(([a, b]) => [BigInt(a), BigInt(b)]));
+  }
 }
 
 /** Hold a Web Lock for a probe until the returned function is called; `null` if another tab holds it. */

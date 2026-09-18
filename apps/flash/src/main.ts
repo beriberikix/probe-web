@@ -1,6 +1,7 @@
 import '@probe-web/ui';
 import { describe, onDevicesChanged } from '@probe-web/devices';
 import { Client, Session, createLocalWorker, type FlashJob, type Wire } from '@probe-web/client';
+import { downloadBytes } from '@probe-web/artifacts';
 import type { ProbeDevicePicker, ProbeFlashPanel, ProbeRttTerminal, ProbeSemihostingConsole, ProbeSerialMonitor, ProbeTargetPicker } from '@probe-web/ui';
 
 interface Manifest {
@@ -350,6 +351,28 @@ if (qs.has('auto')) {
           await flash.verifyOnly();
           log(`cycle verdicts: ${verdicts.join(', ')}`);
           log(`CYCLE_RESULT=${verdicts.join(',') === 'Ok,Mismatch,Ok' ? 'PASS' : 'FAIL'}`);
+        } else if (op === 'dump') {
+          // ?op=dump: halt and save a coredump of the target's RAM. The ranges come from
+          // `target/metadata` rather than a guess, and the file is the encoding native
+          // probe-rs reads -- `cargo run -p probe-web-local --example check-coredump`
+          // opens it, which is the check that the format really matches.
+          const core = s.core(0);
+          await core.halt();
+          const metadata = await s.targetMetadata();
+          const ranges = metadata.memory_map
+            .flatMap((region) => ('Ram' in region ? [region.Ram.range] : []))
+            .map(([start, end]) => [start, end] as [bigint, bigint]);
+          const t0 = performance.now();
+          const bytes = await core.dumpCoreFile(ranges);
+          const captured = ranges.reduce((n, [a, b]) => n + Number(b - a), 0);
+          log(`dump: ${bytes.length} bytes covering ${captured} bytes of RAM in ${ranges.length} region(s) in ${Math.round(performance.now() - t0)} ms`);
+          // Also left on `window` so an automated check can read the bytes out: a browser
+          // may decline a repeated automatic download, and the file is the artefact under
+          // test.
+          (window as unknown as { lastCoredump?: Uint8Array }).lastCoredump = bytes;
+          downloadBytes(`${($<HTMLInputElement>('chip').value || 'core')}.coredump`, bytes);
+          await core.run();
+          log(`DUMP_RESULT=${bytes.length > 64 && ranges.length > 0 ? 'PASS' : 'FAIL'}`);
         } else if (op !== 'attach') await flash.flash();
         // ?monitor=<seconds>: run the RTT terminal for a while, then stop; "keep" leaves it running.
         if (qs.get('monitor') === 'keep') {

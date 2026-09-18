@@ -6,11 +6,11 @@ import 'dockview/dist/styles/dockview.css';
 import '@probe-web/ui';
 import { createDockview, type DockviewApi, type IContentRenderer } from 'dockview';
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
-import { Client, DirectorySourceProvider, elfHasRtt, openSession, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider } from '@probe-web/client';
+import { Client, DirectorySourceProvider, elfHasRtt, openSession, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider, type Wire } from '@probe-web/client';
 import { describe, hasWebUsb, requestProbe } from '@probe-web/devices';
 import { FakeDebugger } from '@probe-web/client/testing';
 import { ProbeDebugAdapter, type DebuggerLike } from '@probe-web/dap';
-import { FileArtifact, hasFileSystemAccess, indexedDbHandleStore, pickFile, restoreHandles, type FileHandleLike, type PermissionHandleLike, type RestoreEntry } from '@probe-web/artifacts';
+import { downloadBytes, FileArtifact, hasFileSystemAccess, indexedDbHandleStore, pickFile, restoreHandles, type FileHandleLike, type PermissionHandleLike, type RestoreEntry } from '@probe-web/artifacts';
 import { DapClient } from './dap-client.ts';
 import { SourceView } from './source-view.ts';
 import { ConsoleView } from './console-view.ts';
@@ -461,6 +461,8 @@ async function start(kind: 'launch' | 'attach') {
     useDebugger(d);
     if (svd) await (elements.get('peripherals') as unknown as { loadSvd(b: Uint8Array, n: string): Promise<void> })?.loadSvd(svd.bytes, svd.name);
     $<HTMLButtonElement>('stop').disabled = false;
+    // A dump needs a live session; over the fake debugger there is none.
+    $<HTMLButtonElement>('dump-core').disabled = session === null;
     return d;
   } catch (e) {
     log(`${kind} failed: ${(e as Error).message}`, 'red');
@@ -485,6 +487,7 @@ async function stop() {
   useDebugger(null);
   source.setPc(null);
   $<HTMLButtonElement>('stop').disabled = true;
+  $<HTMLButtonElement>('dump-core').disabled = true;
   setStatus('not connected');
 }
 
@@ -510,6 +513,44 @@ async function reflash() {
 $('launch').onclick = async () => { try { await start('launch'); await configurationDone(); } catch { /* logged */ } };
 $('attach').onclick = async () => { try { await start('attach'); await configurationDone(); } catch { /* logged */ } };
 $('stop').onclick = () => void stop();
+
+/**
+ * Save a coredump of the halted core.
+ *
+ * The ranges are the target's own RAM regions, from `target/metadata`, rather than a
+ * fixed guess: a dump is only useful if it covers the memory a postmortem will look at,
+ * and that differs per chip. The file is what native `probe-rs` reads, so the snapshot
+ * leaves the browser in a form the usual tools accept.
+ */
+async function dumpCore() {
+  const s = session;
+  const d = currentDebugger;
+  if (!s || !d) return;
+  const button = $<HTMLButtonElement>('dump-core');
+  button.disabled = true;
+  try {
+    const metadata = await s.targetMetadata();
+    const ranges = metadata.memory_map
+      .flatMap((region) => ('Ram' in region ? [region.Ram.range] : []))
+      .map(([start, end]) => [start, end] as [bigint, bigint]);
+    if (ranges.length === 0) {
+      console.log('[workbench] dump: the target declares no RAM regions');
+      return;
+    }
+    const bytes = await s.core(0).dumpCoreFile(ranges);
+    const captured = ranges.reduce((n, [a, b]) => n + Number(b - a), 0);
+    const chip = $<HTMLInputElement>('chip').value || 'core';
+    downloadBytes(`${chip.replace(/[^\w.-]/g, '_')}.coredump`, bytes);
+    console.log(`[workbench] dump: ${bytes.length} bytes covering ${captured} bytes of RAM in ${ranges.length} region(s)`);
+  } catch (e) {
+    console.log(`[workbench] dump failed: ${(e as Error).message ?? e}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+$('dump-core').onclick = () => void dumpCore();
+
+
 addEventListener('pagehide', () => { client?.close(); });
 
 (window as unknown as { workbench: unknown }).workbench = { source, consoleView, start, configurationDone, stop, get dap() { return dap; }, get debugger() { return currentDebugger; } };
