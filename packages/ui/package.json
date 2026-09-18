@@ -17,7 +17,8 @@
     "./breakpoints": "./src/breakpoints.ts",
     "./disassembly": "./src/disassembly.ts",
     "./memory-view": "./src/memory-view.ts",
-    "./peripherals": "./src/peripherals.ts"
+    "./peripherals": "./src/peripherals.ts",
+    "./test-runner": "./src/test-runner.ts"
   },
   "dependencies": {
     "@probe-web/client": "*",

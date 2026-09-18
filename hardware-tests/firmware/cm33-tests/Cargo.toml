@@ -1,0 +1,30 @@
+[package]
+name = "cm33-tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# An `embedded-test` suite for the Cortex-M33 boards, so the test runner has something
+# real to list and run. Deliberately mixes outcomes: tests that pass, one that is expected
+# to panic, and one marked ignore, because the runner has to report all three correctly.
+[workspace]
+
+[features]
+mcxa153 = []
+nrf9160 = []
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+# The harness: it talks to probe-rs over semihosting.
+embedded-test = { version = "0.6", features = ["panic-handler"] }
+semihosting = { version = "0.1", features = ["stdio"] }
+
+[[test]]
+name = "suite"
+harness = false
+
+[profile.release]
+debug = 2
+opt-level = 1
+codegen-units = 1

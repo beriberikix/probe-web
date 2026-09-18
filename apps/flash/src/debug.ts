@@ -52,7 +52,7 @@ if (qs.get('webusb-fake') === 'core') {
       const client = await Client.connect({ kind: 'webusb', worker: createFakeLocalWorker() });
       const probe = (await client.listProbes()).find((p) => p.serial_number === 'fake')!;
       const session = await client.attach({ probe, chip: 'MCXA153' });
-      for (const path of ['cores/halt', 'cores/resume', 'cores/status', 'core/step', 'core/write_reg', 'core/set_hw_bps', 'core/clear_hw_bps', 'core/enable_vc', 'core/metadata', 'core/read_registers', 'debug_state/load_debug_info', 'stack_trace/rich', 'stack_trace/scopes', 'stack_trace/variables', 'stack_trace/evaluate', 'stack_trace/set_variable', 'debug_state/clear_core', 'debug_state/resolve_source_breakpoints', 'debug_state/resolve_source_locations', 'debug_state/load_svd', 'core/dump'] as const) {
+      for (const path of ['cores/halt', 'cores/resume', 'cores/status', 'core/step', 'core/write_reg', 'core/set_hw_bps', 'core/clear_hw_bps', 'core/enable_vc', 'core/metadata', 'core/read_registers', 'debug_state/load_debug_info', 'stack_trace/rich', 'stack_trace/scopes', 'stack_trace/variables', 'stack_trace/evaluate', 'stack_trace/set_variable', 'debug_state/clear_core', 'debug_state/resolve_source_breakpoints', 'debug_state/resolve_source_locations', 'debug_state/load_svd', 'core/dump', 'tests/list', 'tests/run', 'tests/kickoff'] as const) {
         check(`worker advertises ${path}`, session.supports(path), session.supports(path));
       }
       const raw = session.raw;

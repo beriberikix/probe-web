@@ -14,3 +14,4 @@ export * from './memory-view';
 export * from './type-size';
 export * from './peripherals';
 export { toIntelHex, groupBytes } from './intel-hex';
+export * from './test-runner.ts';

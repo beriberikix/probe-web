@@ -14,6 +14,7 @@ mod info;
 mod semihosting;
 mod server;
 mod svd;
+mod tests;
 
 use postcard_rpc::server::{Dispatch, Server, WireRxErrorKind};
 use probe_rs_rpc::transport::memory::{WireRx, WireTx};

@@ -461,6 +461,27 @@ export class Session {
   }
   private cancelled = false;
 
+  /**
+   * The tests an `embedded-test` firmware declares.
+   *
+   * The firmware is asked over semihosting, so it has to be on the chip and at its reset
+   * vector: `boot` says how to get it there, exactly as `monitor` takes it. Console output
+   * produced while listing arrives on `onEvent`.
+   */
+  listTests(boot: Wire.BootInfo, onEvent: (e: MonitorEvent) => void = () => {}): Promise<Wire.Tests> {
+    return this.raw.listTests(boot, onEvent as (e: unknown) => void) as Promise<Wire.Tests>;
+  }
+
+  /**
+   * Run one of the tests from `listTests`.
+   *
+   * Each run resets the target and runs that test alone, which is what makes a failure
+   * attributable — and why running a suite takes one call per test.
+   */
+  runTest(test: Wire.Test, onEvent: (e: MonitorEvent) => void = () => {}): Promise<Wire.TestResult> {
+    return this.raw.runTest(test, onEvent as (e: unknown) => void) as Promise<Wire.TestResult>;
+  }
+
   rttWrite(channel: number, data: Uint8Array | string, timeoutMs = 1000): Promise<number> {
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
     return this.raw.rttWrite(channel, bytes, timeoutMs);

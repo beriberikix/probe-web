@@ -351,6 +351,31 @@ if (qs.has('auto')) {
           await flash.verifyOnly();
           log(`cycle verdicts: ${verdicts.join(', ')}`);
           log(`CYCLE_RESULT=${verdicts.join(',') === 'Ok,Mismatch,Ok' ? 'PASS' : 'FAIL'}`);
+        } else if (op === 'tests') {
+          // ?op=tests: flash the embedded-test firmware, then list and run its suite.
+          // Each run resets the target, so this is the slow path by design.
+          await flash.flash();
+          const boot = rtt.bootInfo ?? { FromRam: null };
+          const t0 = performance.now();
+          const tests = await s.listTests(boot as Wire.BootInfo, (e) => {
+            if (e.kind === 'semihosting') log(`test output: ${e.data.trimEnd()}`);
+          });
+          log(`tests: ${tests.tests.length} found in ${Math.round(performance.now() - t0)} ms: ${tests.tests.map((t) => t.name).join(', ')}`);
+          let passed = 0;
+          let failed = 0;
+          let ignored = 0;
+          for (const test of tests.tests) {
+            if (test.ignored) { ignored++; log(`test ${test.name}: ignored`); continue; }
+            const started = performance.now();
+            const result = await s.runTest(test);
+            const ms = Math.round(performance.now() - started);
+            if (result === 'Success') { passed++; log(`test ${test.name}: PASS (${ms} ms)`); }
+            else { failed++; log(`test ${test.name}: FAIL (${ms} ms) ${JSON.stringify(result)}`); }
+          }
+          log(`tests: ${passed} passed, ${failed} failed, ${ignored} ignored of ${tests.tests.length}`);
+          // The suite is written to have one expected-panic and one ignored test, so a
+          // correct run is every non-ignored test passing.
+          log(`TESTS_RESULT=${failed === 0 && passed === tests.tests.length - ignored && passed > 0 ? 'PASS' : 'FAIL'}`);
         } else if (op === 'dump') {
           // ?op=dump: halt and save a coredump of the target's RAM. The ranges come from
           // `target/metadata` rather than a guess, and the file is the encoding native
