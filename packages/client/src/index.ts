@@ -11,8 +11,9 @@ import { Debugger, type DebugSessionLike, type DebuggerOptions } from './debugge
 export type { Wire };
 export { Debugger, registerTable, registerValueToBigInt } from './debugger.ts';
 export { DirectorySourceProvider, UrlSourceProvider, matchSourcePath } from './sources.ts';
+export { fromEmbedToml, fromLaunchJson, importConfig, type ImportedConfig } from './config.ts';
 export type { DirectoryHandleLike, SourceProvider } from './sources.ts';
-export type { Breakpoint, DebugOutput, DebuggerOptions, Evaluation, Frame, Instruction, RegisterInfo, RegisterValue, RunState, Scope, SourceLocation, SteppingMode, StoppedDetail, Variable } from './debugger.ts';
+export type { Breakpoint, DebugOutput, DebuggerOptions, Evaluation, Frame, Instruction, RegisterInfo, RegisterValue, RttBytes, RunState, Scope, SourceLocation, SteppingMode, StoppedDetail, Variable } from './debugger.ts';
 
 let wasmReady: Promise<unknown> | null = null;
 

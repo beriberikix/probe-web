@@ -190,3 +190,53 @@ test.describe('workbench layout sizing', () => {
     expect(s.console.bottom).toBeLessThanOrEqual(s.dock.bottom + 1);
   });
 });
+
+test.describe('config import', () => {
+  test('an Embed.toml prefills the connection settings and is remembered', async ({ page }) => {
+    await page.goto('/workbench/?fresh=1&fake=1');
+    await page.locator('#dock').waitFor();
+
+    await page.locator('#config-file').setInputFiles({
+      name: 'Embed.toml',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(
+        '[default.general]\nchip = "MCXA153"\n\n[default.probe]\nprotocol = "Jtag"\nserial = "ABC123"\n',
+      ),
+    });
+
+    await expect(page.locator('#chip')).toHaveValue('MCXA153');
+    await expect(page.locator('#probe')).toHaveValue('ABC123');
+    await expect(page.locator('#protocol')).toHaveValue('Jtag');
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as Wb).workbench.consoleView.lines.join('\n')))
+      .toContain('applied chip, probe, protocol');
+
+    // Settings are persisted like any other change, so a reload keeps them.
+    await page.reload();
+    await expect(page.locator('#chip')).toHaveValue('MCXA153');
+  });
+
+  test('a launch.json with a remote section switches transport and reports the files it names', async ({ page }) => {
+    await page.goto('/workbench/?fresh=1&fake=1');
+    await page.locator('#dock').waitFor();
+
+    await page.locator('#config-file').setInputFiles({
+      name: 'launch.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({
+        configurations: [{
+          type: 'probe-rs-debug',
+          chip: 'nRF9160_xxAA',
+          wireProtocol: 'Swd',
+          coreConfigs: [{ programBinary: 'target/debug/app', svdFile: 'nrf9160.svd' }],
+        }],
+      })),
+    });
+
+    await expect(page.locator('#chip')).toHaveValue('nRF9160_xxAA');
+    // A browser cannot open a path, so it says what to pick rather than failing silently.
+    const lines = () => page.evaluate(() => (window as unknown as Wb).workbench.consoleView.lines.join('\n'));
+    await expect.poll(lines).toContain('names a ELF at target/debug/app');
+    await expect.poll(lines).toContain('names a SVD at nrf9160.svd');
+  });
+});

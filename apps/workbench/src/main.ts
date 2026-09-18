@@ -6,7 +6,7 @@ import 'dockview/dist/styles/dockview.css';
 import '@probe-web/ui';
 import { createDockview, type DockviewApi, type IContentRenderer } from 'dockview';
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
-import { Client, DirectorySourceProvider, elfHasRtt, openSession, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider, type Wire } from '@probe-web/client';
+import { Client, DirectorySourceProvider, elfHasRtt, importConfig, openSession, UrlSourceProvider, type Debugger, type DirectoryHandleLike, type Session, type SourceProvider, type Wire } from '@probe-web/client';
 import { describe, hasWebUsb, requestProbe } from '@probe-web/devices';
 import { FakeDebugger } from '@probe-web/client/testing';
 import { ProbeDebugAdapter, type DebuggerLike } from '@probe-web/dap';
@@ -549,6 +549,49 @@ async function dumpCore() {
   }
 }
 $('dump-core').onclick = () => void dumpCore();
+
+/**
+ * Prefill the connection settings from a config the user already keeps.
+ *
+ * Anyone who has been flashing this board from a terminal or VS Code has the chip name,
+ * probe and protocol written down in `Embed.toml` or `launch.json`; reading them beats
+ * retyping. Only the settings this page has fields for are applied, and the log says
+ * which — the files carry plenty this project cannot act on. Paths to the ELF and SVD are
+ * reported rather than opened, since a browser cannot read a path.
+ */
+$('config-file').addEventListener('change', (e) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  void (async () => {
+    try {
+      const config = importConfig(file.name, await file.text());
+      const settings: Record<string, string | undefined> = {
+        chip: config.chip,
+        probe: config.probe,
+        protocol: config.protocol,
+        url: config.url,
+        token: config.token,
+      };
+      if (config.url) settings.transport = 'websocket';
+      for (const [key, value] of Object.entries(settings)) {
+        if (value !== undefined) $<HTMLInputElement>(key).value = value;
+      }
+      applyTransport();
+      saveSettings();
+      log(config.applied.length
+        ? `${file.name}: applied ${config.applied.join(', ')}`
+        : `${file.name}: nothing this page can use`, 'gray');
+      for (const [label, path] of [['ELF', config.programBinary], ['SVD', config.svdFile]] as const) {
+        if (path) log(`${file.name} names a ${label} at ${path} — pick it with the ${label}… button`, 'gray');
+      }
+    } catch (err) {
+      log(`${file.name}: ${(err as Error).message ?? err}`, 'red');
+    } finally {
+      input.value = '';
+    }
+  })();
+});
 
 
 addEventListener('pagehide', () => { client?.close(); });
