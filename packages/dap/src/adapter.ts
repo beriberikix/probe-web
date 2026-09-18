@@ -42,6 +42,13 @@ export interface ProbeLaunchArguments extends DP.LaunchRequestArguments {
   svd?: Uint8Array | string;
   /** Show RTT output as DAP `output` events (default true when the program links RTT). */
   rtt?: boolean;
+  /**
+   * Per-channel RTT configuration, as `probe-rs`'s own `launch.json` has.
+   *
+   * Channels default to `String`, so a firmware writing samples to one has to say so —
+   * otherwise its bytes are decoded as text and land in the console as noise.
+   */
+  rttChannels?: { channelNumber?: number; dataFormat?: 'String' | 'BinaryLE' | 'Defmt' }[];
   /** Stop at the reset vector after launch instead of running. */
   stopOnEntry?: boolean;
 }
@@ -524,7 +531,7 @@ export async function connectProbeRs(args: ProbeLaunchArguments, kind: 'launch' 
     const dbg = session.debugger();
     if (program) await dbg.loadDebugInfo(program, name);
     const { elfHasRtt } = await import('@probe-web/client');
-    if (program && args.rtt !== false && elfHasRtt(program)) await dbg.enableRtt({ elf: program });
+    if (program && args.rtt !== false && elfHasRtt(program)) await dbg.enableRtt({ elf: program, channels: args.rttChannels });
     if (args.svd !== undefined) await dbg.loadSvd(await bytesOf(args.svd), typeof args.svd === 'string' ? args.svd : 'device.svd');
     return { debugger: dbg, close: () => client.close() };
   } catch (e) {

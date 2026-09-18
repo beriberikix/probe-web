@@ -3,6 +3,7 @@
 //   ?auto=1&token=spike&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf&line=40
 //                               real target over WebSocket to probe-rs serve: flash, break at src/main.rs:<line>
 import '@probe-web/ui';
+import { SampleDecoder } from '@probe-web/ui';
 import { Client, openSession, type Debugger } from '@probe-web/client';
 import { createFakeLocalWorker } from '@probe-web/client/testing/worker';
 import { FakeDebugger } from '@probe-web/client/testing';
@@ -211,6 +212,72 @@ if (qs.get('webusb-fake') === 'core') {
       log(`error: ${(e as Error).stack ?? e}`);
       log('SRC_RESULT=FAIL');
     }
+  })();
+} else if (qs.get('spike') === 'plot') {
+  // Phase 5 slice 8: raw bytes from a BinaryLE RTT channel, decoded into samples.
+  //   ?spike=plot&probe=mcu&chip=MCXA153&elf=/firmware/mcxa153-debug.elf
+  void (async () => {
+    const checks: [string, boolean, string][] = [];
+    const check = (name: string, ok: boolean, detail: string) => { checks.push([name, ok, detail]); log(`${ok ? 'PASS' : 'FAIL'} ${name} — ${detail}`); };
+    try {
+      const client = qs.get('transport') === 'websocket'
+        ? await Client.connect({ kind: 'websocket', url: qs.get('url') ?? 'ws://127.0.0.1:3000', token: qs.get('token') ?? undefined })
+        : await Client.connect({ kind: 'webusb' });
+      addEventListener('pagehide', () => client.close());
+      const want = (qs.get('probe') ?? '').toLowerCase();
+      const probe = (await client.listProbes()).find((p) => `${p.identifier} ${p.serial_number}`.toLowerCase().includes(want));
+      if (!probe) throw new Error(`no granted probe matching ${want}`);
+      const session = await client.attach({ probe, chip: qs.get('chip') ?? undefined, protocol: 'Swd' });
+      const elfUrl = qs.get('elf')!;
+      const elf = new Uint8Array(await (await fetch(elfUrl)).arrayBuffer());
+      await session.flash({ image: elf, name: elfUrl, format: 'elf', options: { verify: true } });
+      log('flashed');
+
+      const d = session.debugger();
+      await d.loadDebugInfo(elf, elfUrl);
+      // The raw-bytes event is the whole point: the console only ever sees hex.
+      const decoder = new SampleDecoder('u32');
+      const samples: number[] = [];
+      let byteFrames = 0;
+      d.addEventListener('rtt-bytes', (e) => {
+        const o = (e as CustomEvent).detail as { channel: number; bytes: Uint8Array };
+        if (o.channel !== 1) return;
+        byteFrames++;
+        samples.push(...decoder.push(o.bytes));
+      });
+      // Channel 1 carries samples, not text: without saying so the bytes come back
+      // decoded as a string and the raw-bytes event never fires.
+      await d.enableRtt({ elf, channels: [{ channelNumber: 1, dataFormat: 'BinaryLE' }] });
+      d.start();
+      await d.resetAndHalt();
+      await d.continue();
+
+      // The firmware emits one u32 per ~0.5 s, so a few seconds gives a handful.
+      const t0 = performance.now();
+      // Enough to pass the turn of the wave (period 16), not just its rising edge.
+      while (samples.length < 14 && performance.now() - t0 < 30_000) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      await d.pause().catch(() => {});
+      log(`plot: ${samples.length} sample(s) from ${byteFrames} byte frame(s) in ${Math.round(performance.now() - t0)} ms: ${samples.join(', ')}`);
+
+      check('raw bytes arrive on the binary channel', byteFrames > 0, `${byteFrames} frame(s)`);
+      check('samples decode as u32', samples.length >= 14, `${samples.length} sample(s)`);
+      // The firmware writes a triangle wave of period 80, amplitude 40 — so every value is
+      // in range, and consecutive samples differ by exactly one. A wrong sample width or a
+      // dropped byte breaks both, which a monotonic counter would hide.
+      const inRange = samples.length > 0 && samples.every((v) => v >= 0 && v <= 8);
+      check('every sample is within the wave', inRange, `min ${Math.min(...samples)}, max ${Math.max(...samples)}`);
+      // The turn: without it this would also pass on a plain counter.
+      const turns = samples.slice(1, -1).some((v, i) => v > samples[i] && v > samples[i + 2]);
+      check('the wave turns, so samples are framed correctly', turns, `samples ${samples.join(',')}`);
+      const steps = samples.slice(1).map((v, i) => Math.abs(v - samples[i]));
+      check('consecutive samples step by one', steps.length > 0 && steps.every((s) => s === 1), `steps ${steps.join(',')}`);
+      client.close();
+    } catch (e) {
+      check('no errors', false, (e as Error).stack ?? String(e));
+    }
+    log(`PLOT_RESULT=${checks.length && checks.every((c) => c[1]) ? 'PASS' : 'FAIL'} (${checks.filter((c) => c[1]).length}/${checks.length})`);
   })();
 } else if (qs.get('spike') === 'webusb-semi') {
   // Phase 4 slice 7: semihosting serviced by the worker while the SDK `Debugger` runs the target.

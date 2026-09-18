@@ -12,6 +12,7 @@
  *   (`registers.generated.ts`), since the RPC identifies registers by id only.
  */
 import type * as Wire from './wire';
+import type { RttChannelConfigInput } from './index.ts';
 import { armCommon, cortexM, cortexMFp, riscv, v8mMain, v8mSecurity, xtensa, type RegisterInfo } from './registers.generated.ts';
 
 export type { RegisterInfo };
@@ -39,7 +40,7 @@ export interface DebugSessionLike {
   /** Whether the server implements an endpoint (the SDK Session; optional so tests can omit it). */
   supports?(path: keyof Wire.Endpoints): boolean;
   /** The SDK Session's RTT setup (optional so tests can omit it). */
-  createRttClient?(opts: { elf?: Uint8Array }): Promise<unknown>;
+  createRttClient?(opts: { elf?: Uint8Array; channels?: RttChannelConfigInput[] }): Promise<unknown>;
   core(index: number): DebugCoreLike;
 }
 
@@ -146,6 +147,12 @@ export interface Evaluation {
   type: string | null;
   reference: number;
   memoryReference: string | null;
+}
+
+/** Raw bytes from a binary RTT channel (`rtt-bytes` event), for plotting or decoding. */
+export interface RttBytes {
+  channel: number;
+  bytes: Uint8Array;
 }
 
 /** Target output seen while debugging (`output` event). */
@@ -929,10 +936,12 @@ export class Debugger extends EventTarget {
    * (`start()`); output arrives as `output` events. Semihosting output is reported the same way
    * without calling this.
    */
-  enableRtt(options: { elf?: Uint8Array } = {}): Promise<void> {
+  enableRtt(options: { elf?: Uint8Array; channels?: RttChannelConfigInput[] } = {}): Promise<void> {
     return this.exclusive(async () => {
       if (!this.session.createRttClient) throw Object.assign(new Error('RTT needs an SDK session'), { kind: 'unsupported' });
-      await this.session.createRttClient({ elf: options.elf });
+      // Channels default to `String`. A firmware writing samples has to say so, or its
+      // bytes arrive decoded as text and the `rtt-bytes` event never fires.
+      await this.session.createRttClient({ elf: options.elf, channels: options.channels });
       this.rtt = { channels: null, flushAfterStop: false };
     });
   }
@@ -963,9 +972,20 @@ export class Debugger extends EventTarget {
           | { kind: 'error'; channel: number; message: string }
         )[];
         for (const o of outputs) {
+          // A BinaryLE channel carries data, not text. Hex is what a console can show, but
+          // it is lossy for anything that wants the values — a plot, say — so the raw
+          // bytes go out as their own event and the hex line is kept for the console.
+          if (o.kind === 'bytes') {
+            // Binary channels report bytes only. Rendering them as hex into the same
+            // stream as the text channels reads as noise and, worse, interleaves with a
+            // partial text line and corrupts it — which is how this was found: a DAP
+            // check that parses `n=… result=…` lines started losing them once a firmware
+            // gained a second, binary channel.
+            this.emit('rtt-bytes', { channel: o.channel, bytes: Uint8Array.from(o.bytes) } satisfies RttBytes);
+            continue;
+          }
           const text = o.kind === 'text' ? o.text
             : o.kind === 'defmt' ? o.lines.map((l) => `${l.level ? l.level.toUpperCase() + ' ' : ''}${l.message}\n`).join('')
-            : o.kind === 'bytes' ? o.bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ') + '\n'
             : null;
           if (text) this.emit('output', { source: 'rtt', channel: o.channel, text } satisfies DebugOutput);
         }

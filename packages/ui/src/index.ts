@@ -15,3 +15,5 @@ export * from './type-size';
 export * from './peripherals';
 export { toIntelHex, groupBytes } from './intel-hex';
 export * from './test-runner.ts';
+export * from './samples.ts';
+export * from './rtt-plot.ts';
