@@ -1,13 +1,14 @@
-[target.wasm32-unknown-unknown]
-rustflags = ["--cfg=web_sys_unstable_apis"]
-
 # To build against local checkouts of the probe-rs forks instead of the git dependencies in
 # crates/*/Cargo.toml, uncomment and adjust. Cargo then builds from those working trees, so
 # changes there are picked up without pushing; the directories must hold the same crate
-# versions the git dependencies resolve to.
+# versions the git dependencies resolve to. `paths` is a top-level key: inside a [target]
+# table cargo rejects it ("expected a table, but found a array").
 # paths = [
 #     "../probe-rs/probe-rs",
 #     "../probe-rs/probe-rs-debug",
 #     "../prs-wasm-rpc/probe-rs-rpc",
 #     "../prs-wasm-rpc/probe-rs-rpc-client",
 # ]
+
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=web_sys_unstable_apis"]

@@ -782,7 +782,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1623,7 +1623,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1947,7 +1947,7 @@ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 [[package]]
 name = "probe-rs"
 version = "0.28.0"
-source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#0a3bcdc7fc7f66733371f3cf163adac6ea6f2981"
+source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#f89910e349ff93fa05f73f48fc857ddb54cefa2b"
 dependencies = [
  "anyhow",
  "async-io",
@@ -1986,7 +1986,7 @@ dependencies = [
 [[package]]
 name = "probe-rs-debug"
 version = "0.28.0"
-source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#0a3bcdc7fc7f66733371f3cf163adac6ea6f2981"
+source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#f89910e349ff93fa05f73f48fc857ddb54cefa2b"
 dependencies = [
  "addr2line",
  "async-trait",
@@ -2043,7 +2043,7 @@ dependencies = [
 [[package]]
 name = "probe-rs-target"
 version = "0.28.0"
-source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#0a3bcdc7fc7f66733371f3cf163adac6ea6f2981"
+source = "git+https://github.com/beriberikix/probe-rs?branch=webusb%2Fnusb-0.2.7#f89910e349ff93fa05f73f48fc857ddb54cefa2b"
 dependencies = [
  "base64 0.22.1",
  "indexmap",
@@ -2227,7 +2227,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
