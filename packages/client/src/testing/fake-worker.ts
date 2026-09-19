@@ -17,7 +17,7 @@ import { workerLogLevel } from '../index.js';
  * so the WebUSB transport can be driven without hardware.
  *
  * It lives here, not in the library, because a bundler emits a worker's chunk wherever it sees
- * the URL: importing this module is what pulls the test-only 12 MB wasm module into a bundle.
+ * the URL: importing this module is what pulls the test-only 10 MB wasm module into a bundle.
  * `log` sets probe-rs's tracing level in the worker, as for `createLocalWorker`.
  */
 export function createFakeLocalWorker(opts: { log?: string } = {}): Worker {

@@ -144,7 +144,9 @@ if (qs.get('webusb-fake') === 'core') {
       log(`debug info loaded in ${Math.round(performance.now() - t)} ms`);
       // RTT output while debugging (rtt/poll_up in the worker).
       let rttText = '';
-      d.addEventListener('output', (e) => { const o = (e as CustomEvent).detail as { source: string; text: string }; if (o.source === 'rtt') rttText += o.text; });
+      // Channel 0 only: the firmware's channel 1 carries binary samples, which (not configured
+      // as binary here) arrive as text and would glue themselves onto the next line.
+      d.addEventListener('output', (e) => { const o = (e as CustomEvent).detail as { source: string; channel: number; text: string }; if (o.source === 'rtt' && o.channel === 0) rttText += o.text; });
       await d.enableRtt({ elf });
       d.start();
       await d.resetAndHalt();
