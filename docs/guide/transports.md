@@ -26,7 +26,7 @@ const client = await Client.connect({ kind: 'webusb' });
 has been granted, so the grant happens on the main thread with `requestProbe()`. Grants are
 per origin and persist, which is why all the hosted apps live on one site.
 
-The worker loads a wasm module of about 12 MB, which the browser caches after the first visit.
+The worker loads a wasm module of about 10 MB (under 2 MB compressed), which the browser caches after the first visit.
 
 Things to know:
 
