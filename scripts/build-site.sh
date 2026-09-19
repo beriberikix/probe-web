@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 base=${1:-/}
 out=$(pwd)/site
 
-# One build for every app (vite.site.config.ts), so the 12.6 MB worker and the client wasm
+# One build for every app (vite.site.config.ts), so the 10 MB worker and the client wasm
 # are emitted once and shared instead of once per app.
 npx vite build --config vite.site.config.ts --base "$base"
 

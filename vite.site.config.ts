@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 // One build for every app and example, so they share chunks: built separately, each carried its own copy of
-// the 12.6 MB probe-rs worker and the client wasm. The apps end up under one origin anyway —
+// the 10 MB probe-rs worker and the client wasm. The apps end up under one origin anyway —
 // WebUSB grants are per origin — and `scripts/build-site.sh` moves each app's HTML into place
 // afterwards, which is safe because `base` makes every asset URL absolute.
 const app = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -14,7 +14,7 @@ export default defineConfig({
   // The flasher's public directory is the site's: manifests, demo firmware, SVDs.
   publicDir: app('apps/flash/public'),
   resolve: {
-    // Keep the test-only fake-probe worker (and its 12.6 MB wasm) out of the deployed site.
+    // Keep the test-only fake-probe worker (and its 10 MB wasm) out of the deployed site.
     alias: { '@probe-web/client/testing/worker': app('scripts/fake-worker-stub.ts') },
   },
   optimizeDeps: { exclude: ['@probe-web/client', '@probe-web/ui', '@probe-web/devices', '@probe-web/artifacts', '@probe-web/dap'] },

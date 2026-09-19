@@ -2,7 +2,7 @@
  * Reading CMSIS packs and `.FLM` flash algorithms in the browser.
  *
  * This is a subpath export (`@probe-web/client/targets`) rather than part of the main
- * entry because it pulls in its own ~1.3 MB wasm — a zip reader, an ELF reader and a
+ * entry because it pulls in its own ~0.6 MB wasm — a zip reader, an ELF reader and a
  * `.pdsc` parser. The flasher never imports a pack, so nothing here should reach the page
  * most visitors open. Import it dynamically, at the point a user picks a file:
  *

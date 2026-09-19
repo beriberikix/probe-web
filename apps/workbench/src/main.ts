@@ -463,7 +463,7 @@ async function showTopFrame() {
   }
 }
 
-/** The fake-probe worker. Dev-only: the `import.meta.env.DEV` guard is what keeps its 12 MB
+/** The fake-probe worker. Dev-only: the `import.meta.env.DEV` guard is what keeps its 10 MB
  * wasm module out of production bundles, since a bundler emits any chunk it can reach. */
 async function fakeWorker(): Promise<Worker> {
   if (!import.meta.env.DEV) throw new Error('the fake probe is only available in development');

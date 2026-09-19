@@ -58,7 +58,7 @@ const session = await client.attach({ probe, chip: 'MCXA153' });
 ```
 
 The mocked core supports run control, registers, memory and breakpoints. It cannot run
-flash algorithms, so flashing still needs hardware. The worker carries its own 12 MB wasm
+flash algorithms, so flashing still needs hardware. The worker carries its own 10 MB wasm
 module. Import it only from tests, so bundlers keep it out of production builds.
 
 This repository's Playwright suite (`npx playwright test`) drives every app and component

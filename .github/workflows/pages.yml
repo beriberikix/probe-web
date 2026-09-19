@@ -35,6 +35,14 @@ jobs:
 
       - run: ./scripts/build-wasm.sh
 
+      # The deployed modules have no function names. These copies do, numbered identically,
+      # to map a `wasm-function[N]` in a crash report back to its function (CONTRIBUTING.md).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-symbols-${{ github.sha }}
+          path: target/wasm-symbols/
+          retention-days: 90
+
       # The demo images the site offers, so a visitor can flash a board without having a
       # firmware file of their own. Cortex-M only: the ESP32-S3 image needs the Xtensa
       # toolchain, which is a much larger install.

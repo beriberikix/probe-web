@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('target picker searches the registry, shows chip info, imports YAML', async ({ page }) => {
   // Heavy for a UI test: it needs a connected client for the chip registry, so the page loads the
-  // 12.6 MB fake-probe worker and runs a fake flash first. That fits comfortably on a developer
+  // 10 MB fake-probe worker and runs a fake flash first. That fits comfortably on a developer
   // machine and not always on a shared CI runner, where the default budget timed out mid-test.
   test.slow();
   await page.goto('/?auto=1&transport=webusb&fake=1');

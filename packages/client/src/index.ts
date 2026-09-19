@@ -87,7 +87,7 @@ export type Transport =
 export function createLocalWorker(opts: { log?: string } = {}): Worker {
   // The URL is written out in full: a bundler only recognises a worker, and so only emits its
   // chunk, when the URL is a literal. The fake-probe worker lives in `@probe-web/client/testing`
-  // for the same reason — referencing it here would put a second 12 MB wasm module into every
+  // for the same reason — referencing it here would put a second 10 MB wasm module into every
   // deployed page.
   const worker = new Worker(new URL('../worker/local-worker.js', import.meta.url), { type: 'module' });
   worker.postMessage(`init:${workerLogLevel(opts.log) ?? ''}`);

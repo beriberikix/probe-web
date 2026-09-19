@@ -51,6 +51,23 @@ Do not edit these by hand:
 | `packages/client/src/registers.generated.ts` | `scripts/gen-registers.py <probe-rs checkout>` | When probe-rs's register tables change. |
 | `docs/api/` | `npm run docs:api` (TypeDoc) | On every docs build; not committed. |
 
+## Reading a worker crash
+
+The wasm modules ship without function names, so a panic's stack trace in the console shows
+frames like `probe_web_local_bg.wasm:wasm-function[2699]`. `scripts/build-wasm.sh` keeps a
+copy of each module with names in `target/wasm-symbols/`. For the deployed site, each Pages
+run uploads them as the `wasm-symbols-<commit>` artifact. Look the numbers up in the copy
+from the same build:
+
+```sh
+node scripts/wasm-names.mjs lookup target/wasm-symbols/probe_web_local.wasm 2699 6387
+# 2699  console_error_panic_hook[…]::hook
+# 6387  probe_web_local[…]::start::{closure#0}
+```
+
+The panic message and its `file:line` don't depend on names. They reach the page as the
+worker's `fatal:` reason either way.
+
 ## Checks
 
 CI runs all of these. Run the ones your change touches:

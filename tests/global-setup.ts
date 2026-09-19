@@ -4,7 +4,7 @@ import { chromium, type FullConfig } from '@playwright/test';
  * Load the flasher once before the suite.
  *
  * Vite transforms on demand, and the first page to ask for the app pays for all of it — the
- * components, Monaco, and the 12.6 MB fake-probe worker. Whichever spec goes first wears that
+ * components, Monaco, and the 10 MB fake-probe worker. Whichever spec goes first wears that
  * cost while the others run beside it: on CI the target-picker test took three minutes on its
  * first attempt and 1.6 seconds on the retry. Warming once here keeps a spec's own timeout
  * about the spec.
