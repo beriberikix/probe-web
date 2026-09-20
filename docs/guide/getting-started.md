@@ -26,30 +26,25 @@ verified.
 npm install @probe-web/client @probe-web/ui @probe-web/devices
 ```
 
-The packages ship TypeScript source rather than a build, so your bundler compiles them
-along with your own code, and it needs to be told how. With Vite:
+`@probe-web/ui` ships compiled JavaScript. The other five ship TypeScript source, so your
+bundler compiles them along with your own code. With Vite, the whole configuration is one
+exclusion:
 
 ```ts
 // vite.config.ts
 import { defineConfig } from 'vite';
 
-// @probe-web/ui's components use TypeScript's decorators, so the dependency has to be
-// compiled with them enabled — in the dev-time dependency optimizer and in the build.
-const tsconfigRaw = { compilerOptions: { experimentalDecorators: true, useDefineForClassFields: false } };
-
 export default defineConfig({
-  esbuild: { tsconfigRaw },
   optimizeDeps: {
     // probe-rs's Worker and wasm are addressed with `new URL(..., import.meta.url)`,
     // which does not survive dependency pre-bundling.
     exclude: ['@probe-web/client'],
-    esbuildOptions: { tsconfigRaw },
   },
   worker: { format: 'es' },
 });
 ```
 
-Your `tsconfig.json` needs the matching options, so `tsc` reads the packages the same way:
+Your `tsconfig.json` needs to resolve the source the packages ship:
 
 ```json
 {
@@ -57,8 +52,6 @@ Your `tsconfig.json` needs the matching options, so `tsc` reads the packages the
     "target": "ES2022",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
     "noEmit": true,
     "types": ["vite/client", "w3c-web-usb"]
   }

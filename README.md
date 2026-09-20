@@ -57,10 +57,10 @@ Or drop in the components:
 <probe-rtt-terminal></probe-rtt-terminal>
 ```
 
-The packages ship TypeScript source rather than a build, so a bundler compiles them along
-with your own code. That needs a little configuration — the
-[guide](https://beriberikix.github.io/probe-web/guide/getting-started) has the Vite and
-`tsconfig.json` settings, and covers each part of the API.
+`@probe-web/ui` ships compiled JavaScript; the rest ship TypeScript source, which a bundler
+compiles along with your own code. The
+[guide](https://beriberikix.github.io/probe-web/guide/getting-started) has the one Vite
+setting they need, and covers each part of the API.
 
 ## What is here
 

@@ -136,9 +136,22 @@ The elements work in React, but object properties and custom events need a littl
 
 ## Bundling
 
-The package ships TypeScript source that uses Lit's decorators, so whatever compiles it needs
-`experimentalDecorators: true` and `useDefineForClassFields: false`. The package ships its own
-`tsconfig.json` with both, which is enough for a dev server transforming the files directly —
-but *not* for a bundler's dependency optimizer or production build, which do not read a
-`tsconfig.json` inside `node_modules`. Pass the options explicitly; the Vite settings are in
+`@probe-web/ui` ships compiled JavaScript with type declarations, so nothing in your
+toolchain has to know how to compile it — no decorator settings, no bundler-specific
+options. It works on any bundler that reads `exports`.
+
+The elements are registered as a side effect of importing them, and `@probe-web/ui` is a
+barrel that imports all of them. Import the subpath you need instead, and you ship only
+that element:
+
+```ts
+import '@probe-web/ui/flash-panel';     // just this one
+import '@probe-web/ui';                 // all of them
+```
+
+xterm.js is loaded on demand, the first time `<probe-rtt-terminal>` or
+`<probe-serial-monitor>` renders, so a page that never shows a terminal never downloads it.
+
+`@probe-web/client` still needs one Vite setting, because it addresses its Worker and wasm
+with `new URL(..., import.meta.url)`; see
 [Getting started](./getting-started#use-the-sdk-in-your-own-page).

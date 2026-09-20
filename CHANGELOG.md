@@ -28,6 +28,46 @@ separate 71.7 kB chunk that is only fetched when the element renders.
 that have no `version`, and failed with "Invalid package, must have name and version". It now
 names the six published packages.
 
+## Unreleased
+
+### Changed
+
+**`@probe-web/ui` now ships compiled JavaScript** (`dist/`) instead of TypeScript source.
+Its components use TypeScript's decorators, and nothing about an npm package can tell a
+consumer's toolchain to enable them. Shipping the package's own `tsconfig.json` covered a
+Vite dev server but not a production build, and **Vite 8 ignores that configuration
+entirely**: it built without complaint and emitted untransformed decorator syntax, so the
+element never registered and the page died with `SyntaxError: Invalid or unexpected token`.
+
+For consumers this removes configuration rather than adding it. Where a Vite app previously
+needed `esbuild.tsconfigRaw` *and* `optimizeDeps.esbuildOptions.tsconfigRaw`, plus
+`experimentalDecorators` and `useDefineForClassFields` in its `tsconfig.json`, the whole
+requirement is now:
+
+```ts
+optimizeDeps: { exclude: ['@probe-web/client'] }
+```
+
+which is there only because the client addresses its Worker and wasm with
+`new URL(..., import.meta.url)`. `@probe-web/ui` works on Vite 6, 7 and 8, and on any other
+bundler that reads `exports`.
+
+The other five packages still ship TypeScript source; they use no decorators and were never
+affected.
+
+`@probe-web/ui` also no longer uses Vite's `?inline` query to read xterm's stylesheet, which
+only Vite understands. The stylesheet is generated into the package by
+`scripts/gen-xterm-css.mjs`, so the package no longer requires a Vite-shaped bundler at all.
+
+### Added
+
+`scripts/check-consumer.mjs` packs the tarballs, installs them into a throwaway app with the
+minimum configuration a consumer should need, builds it, and loads the result in a browser.
+CI runs it on every pull request against the *latest* Vite — this repository builds on
+Vite 6, so nothing in it would otherwise notice a newer Vite breaking the packages. A build
+that succeeds proves nothing on its own, which is exactly how the failure above went
+unnoticed.
+
 ## 0.5.1 - 2026-09-20
 
 No changes to the packages: their source is identical to 0.5.0.

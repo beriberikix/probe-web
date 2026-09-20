@@ -20,31 +20,31 @@
   "type": "module",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./device-picker": "./src/device-picker.ts",
-    "./flash-panel": "./src/flash-panel.ts",
-    "./rtt-terminal": "./src/rtt-terminal.ts",
-    "./target-picker": "./src/target-picker.ts",
-    "./semihosting-console": "./src/semihosting-console.ts",
-    "./serial-monitor": "./src/serial-monitor.ts",
-    "./core-controls": "./src/core-controls.ts",
-    "./registers": "./src/registers.ts",
-    "./callstack": "./src/callstack.ts",
-    "./variables": "./src/variables.ts",
-    "./breakpoints": "./src/breakpoints.ts",
-    "./disassembly": "./src/disassembly.ts",
-    "./memory-view": "./src/memory-view.ts",
-    "./peripherals": "./src/peripherals.ts",
-    "./test-runner": "./src/test-runner.ts",
-    "./rtt-plot": "./src/rtt-plot.ts",
+    ".": "./dist/index.js",
+    "./device-picker": "./dist/device-picker.js",
+    "./flash-panel": "./dist/flash-panel.js",
+    "./rtt-terminal": "./dist/rtt-terminal.js",
+    "./target-picker": "./dist/target-picker.js",
+    "./semihosting-console": "./dist/semihosting-console.js",
+    "./serial-monitor": "./dist/serial-monitor.js",
+    "./core-controls": "./dist/core-controls.js",
+    "./registers": "./dist/registers.js",
+    "./callstack": "./dist/callstack.js",
+    "./variables": "./dist/variables.js",
+    "./breakpoints": "./dist/breakpoints.js",
+    "./disassembly": "./dist/disassembly.js",
+    "./memory-view": "./dist/memory-view.js",
+    "./peripherals": "./dist/peripherals.js",
+    "./test-runner": "./dist/test-runner.js",
+    "./rtt-plot": "./dist/rtt-plot.js",
     "./theme.css": "./src/theme.css",
-    "./icons": "./src/icons.ts",
-    "./color-scheme": "./src/color-scheme.ts",
-    "./terminal-theme": "./src/terminal-theme.ts"
+    "./icons": "./dist/icons.js",
+    "./color-scheme": "./dist/color-scheme.js",
+    "./terminal-theme": "./dist/terminal-theme.js"
   },
   "files": [
-    "src",
-    "tsconfig.json"
+    "dist",
+    "src"
   ],
   "publishConfig": {
     "access": "public"
@@ -57,5 +57,9 @@
     "@xterm/xterm": "^5.5.0",
     "lit": "^3.2.0",
     "@probe-web/serial": "^0.5.1"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   }
 }
