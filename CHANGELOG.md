@@ -3,6 +3,31 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Performance
+
+`@probe-web/ui` no longer loads xterm.js until an element actually shows a terminal.
+`<probe-rtt-terminal>` and `<probe-serial-monitor>` imported it at module scope, and because
+`index.ts` is a barrel that registers every element, a plain `import '@probe-web/ui'` paid
+for xterm on a page with no terminal on it. It is now fetched on first render, together with
+its stylesheet, which is adopted into the element's shadow root rather than baked into
+`static styles`.
+
+Output that arrives while xterm is still downloading is buffered and replayed, so a monitor
+loop or a serial port that starts producing immediately loses nothing.
+
+Measured against a production build: the flasher's first load went from **136 kB to 65 kB**
+gzipped and the React example's from **176 kB to 106 kB**. In a consumer that installs the
+tarball and imports `@probe-web/ui/serial-monitor`, the entry chunk is 13.7 kB and xterm is a
+separate 71.7 kB chunk that is only fetched when the element renders.
+
+### Fixed
+
+`npm run release:pack` packed every workspace, including the `apps/` and `examples/` ones
+that have no `version`, and failed with "Invalid package, must have name and version". It now
+names the six published packages.
+
 ## 0.5.1 - 2026-09-20
 
 No changes to the packages: their source is identical to 0.5.0.
