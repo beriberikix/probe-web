@@ -79,6 +79,57 @@ export type Transport =
       worker?: Worker;
     };
 
+let prefetched = false;
+
+/**
+ * Start downloading the wasm the WebUSB transport needs, before anything asks for it.
+ *
+ * Nothing requests the worker's module until {@link Client.connect} runs, so by default the
+ * whole download — about 2.8 MB compressed — lands inside the wait after the user has
+ * clicked connect. Calling this earlier moves it out of that wait.
+ *
+ * It is a hint, not a load: the browser fetches at the lowest priority into its HTTP cache
+ * and nothing is instantiated or held in memory, so a visitor who never connects a probe
+ * pays only for the bytes. Compiling costs about 30 ms either way, which is why this warms
+ * the download rather than keeping a worker alive.
+ *
+ * Call it when a probe is likely to be used — the origin has already been granted one, say,
+ * or the pointer is over the connect button — not on page load, which would spend a
+ * first-time visitor's bandwidth on a page they may only be reading.
+ *
+ * Safe to call repeatedly; only the first call does anything. No-op outside a browser.
+ *
+ * @example
+ * ```ts
+ * import { prefetchWasm } from '@probe-web/client';
+ * import { grantedProbes } from '@probe-web/devices';
+ *
+ * // This visitor has connected a probe here before, so they will probably do it again.
+ * if ((await grantedProbes()).length) prefetchWasm();
+ * ```
+ */
+export function prefetchWasm(): void {
+  if (prefetched || isNode || typeof document === 'undefined') return;
+  prefetched = true;
+  // `rel=prefetch` rather than `fetch()`: the browser does it at idle priority and puts the
+  // bytes in its HTTP cache, where the worker's own fetch will find them, without this tab
+  // holding 10 MB of ArrayBuffer to throw away.
+  //
+  // Both URLs are written out in full for the same reason `createLocalWorker` does: a
+  // bundler only rewrites `new URL(..., import.meta.url)` when the URL is a literal. The
+  // worker's glue resolves the same file, and the bundler emits it once.
+  for (const url of [
+    new URL('../wasm/probe_web_core_bg.wasm', import.meta.url),
+    new URL('../worker/probe_web_local_bg.wasm', import.meta.url),
+  ]) {
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.as = 'fetch';
+    link.href = url.href;
+    document.head.append(link);
+  }
+}
+
 /**
  * Create the worker that hosts probe-rs for the WebUSB transport. `log` raises
  * probe-rs's tracing level inside the worker (its output is mirrored to the page

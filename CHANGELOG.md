@@ -3,6 +3,21 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+`prefetchWasm()` in `@probe-web/client`. Nothing requests the WebUSB worker's module — about
+2.8 MB over the wire — until `Client.connect` runs, so the whole download used to land inside
+the wait after the user clicked connect. `prefetchWasm()` issues a `rel=prefetch` hint
+instead: the browser fetches at idle priority into its HTTP cache, and nothing is
+instantiated or held in memory. Compiling costs about 30 ms whether the bytes came from the
+network or the cache, so it is the download that is worth moving, not the compile.
+
+It is deliberately not called on import. The flasher, the inspector and the workbench call it
+when a probe is likely to be used: when the pointer reaches the connect button, and when
+`grantedDevices()` shows this origin has been granted a probe before.
+
 ## 0.5.1 - 2026-09-20
 
 No changes to the packages: their source is identical to 0.5.0.

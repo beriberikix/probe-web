@@ -1,6 +1,7 @@
 import '../../shared/shell.ts';
 import '@probe-web/ui/device-picker';
 import './layout.ts';
+import { prefetchWhenLikely } from '../../shared/prefetch.ts';
 import { Client, createLocalWorker, type Wire } from '@probe-web/client';
 import type { ProbeDevicePicker } from '@probe-web/ui';
 
@@ -89,6 +90,13 @@ async function scan() {
 picker.addEventListener('probe-selected', (e) => { probe = (e as CustomEvent<Wire.DebugProbeEntry>).detail; log(`probe: ${probe.identifier}`); });
 $('connect').onclick = connect;
 $('scan').onclick = scan;
+
+// The worker's wasm is 2.8 MB compressed and nothing asks for it until connect. `?fake=1`
+// uses the fake-probe worker instead, so it would be 2.8 MB wasted.
+prefetchWhenLikely({
+  triggers: [$('connect')],
+  webusb: () => !qs.has('fake') && (document.querySelector('input[name=transport]:checked') as HTMLInputElement)?.value === 'webusb',
+});
 
 if (qs.has('auto')) {
   const transport = qs.get('transport') ?? 'webusb';

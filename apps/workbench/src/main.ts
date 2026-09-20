@@ -16,6 +16,7 @@ import { ProbeDebugAdapter, type DebuggerLike } from '@probe-web/dap';
 import { downloadBytes, FileArtifact, hasFileSystemAccess, indexedDbHandleStore, pickFile, restoreHandles, type FileHandleLike, type PermissionHandleLike, type RestoreEntry } from '@probe-web/artifacts';
 import { DapClient } from './dap-client.ts';
 import { SourceView } from './source-view.ts';
+import { prefetchWhenLikely } from '../../shared/prefetch.ts';
 import { ConsoleView } from './console-view.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -595,6 +596,13 @@ async function reflash() {
 
 $('launch').onclick = async () => { try { await start('launch'); await configurationDone(); } catch { /* logged */ } };
 $('attach').onclick = async () => { try { await start('attach'); await configurationDone(); } catch { /* logged */ } };
+
+// The worker's wasm is 2.8 MB compressed and nothing asks for it until launch or attach.
+// `?fake=1` uses the fake-probe worker instead, so it would be 2.8 MB wasted.
+prefetchWhenLikely({
+  triggers: [$('launch'), $('attach')],
+  webusb: () => !qs.has('fake') && $<HTMLSelectElement>('transport').value === 'webusb',
+});
 $('stop').onclick = () => void stop();
 
 /**
