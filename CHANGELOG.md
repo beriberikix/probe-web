@@ -3,6 +3,21 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+The hosted site installs a service worker. Every asset is content-hashed and therefore
+immutable, but GitHub Pages caps `Cache-Control` at ten minutes and offers no way to
+configure headers, so past that window each asset costs a revalidation round trip before
+anything can start. Hashed assets are now served cache-first from the Cache API, and
+documents network-first so a deploy is always picked up.
+
+The more useful half is that the apps keep working with no network once warm, including the
+9.8 MB probe-rs worker. Nothing is precached, so a first visit is exactly as fast as before.
+
+No package changed: this is the deployed apps only.
+
 ## 0.5.1 - 2026-09-20
 
 No changes to the packages: their source is identical to 0.5.0.

@@ -243,3 +243,20 @@ export function wireSashes(app: string) {
 for (const el of document.querySelectorAll<HTMLElement>('[data-icon]')) {
   el.insertAdjacentHTML('afterbegin', iconMarkup(el.dataset.icon as IconName, 14));
 }
+
+// The service worker at the site root, whose scope covers the docs, every app and the
+// /assets/ they share. Production only: in front of the dev server it would fight HMR, and
+// the browser tests drive the dev server.
+//
+// Registered from the shell rather than from each app because one registration controls the
+// whole origin. The examples deliberately do not pull the shell in, so a visitor who only
+// ever opens an example never installs it — which is the right trade for a page whose point
+// is to be the minimum.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  const base = import.meta.env.BASE_URL;
+  addEventListener('load', () => {
+    void navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch((e) => {
+      console.warn('[probe-web] service worker registration failed', e);
+    });
+  });
+}
