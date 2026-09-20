@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:workspaces": "npm test --workspaces --if-present",
-    "release:pack": "npm pack --workspaces --pack-destination ../pw-release",
+    "release:pack": "npm pack -w @probe-web/devices -w @probe-web/artifacts -w @probe-web/serial -w @probe-web/client -w @probe-web/dap -w @probe-web/ui --pack-destination ../pw-release",
     "docs:api": "typedoc",
     "docs:dev": "typedoc && vitepress dev docs",
     "docs:build": "typedoc && vitepress build docs",

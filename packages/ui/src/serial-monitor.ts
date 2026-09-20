@@ -1,14 +1,11 @@
-import { LitElement, css, html, nothing, unsafeCSS } from 'lit';
+import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import {
   BAUD_RATES, LineDecoder, SerialConnection, describePort, grantedPorts, hasWebSerial, onPortsChanged, requestPort,
   type LineEnding, type SerialPortLike,
 } from '@probe-web/serial';
 import { baseStyles } from './base-style.ts';
-import { followScheme, terminalFontFamily } from './terminal-theme.ts';
+import { LazyTerminal } from './lazy-terminal.ts';
 import { icon } from './icons.ts';
 
 /**
@@ -25,7 +22,7 @@ import { icon } from './icons.ts';
 @customElement('probe-serial-monitor')
 export class ProbeSerialMonitor extends LitElement {
   /** @internal */
-  static styles = [unsafeCSS(xtermCss), baseStyles, css`
+  static styles = [baseStyles, css`
     :host { display: flex; flex-direction: column; }
     .row { margin: 0 0 6px; }
     form.row { margin: 6px 0 0; flex-wrap: nowrap; }
@@ -47,16 +44,14 @@ export class ProbeSerialMonitor extends LitElement {
   @property({ attribute: 'line-ending' }) lineEnding: LineEnding = 'crlf';
   @state() private connection: SerialConnection | null = null;
   @state() private status = '';
-  private term: Terminal | null = null;
-  private fit = new FitAddon();
+  private term = new LazyTerminal();
   private lines = new LineDecoder();
   private decoder = new TextDecoder();
   private unsubscribe: (() => void) | null = null;
-  private unfollow: (() => void) | null = null;
 
   connectedCallback() {
     super.connectedCallback();
-    if (this.term && !this.unfollow) this.unfollow = followScheme(this.term);
+    this.term.follow();
     if (!hasWebSerial()) {
       this.status = 'WebSerial is not available in this browser (use Chrome or Edge)';
       return;
@@ -66,8 +61,7 @@ export class ProbeSerialMonitor extends LitElement {
   }
 
   disconnectedCallback() {
-    this.unfollow?.();
-    this.unfollow = null;
+    this.term.unfollow();
     this.unsubscribe?.();
     void this.connection?.close();
     super.disconnectedCallback();
@@ -84,13 +78,7 @@ export class ProbeSerialMonitor extends LitElement {
   }
 
   firstUpdated() {
-    this.term = new Terminal({ convertEol: true, fontSize: 12, fontFamily: terminalFontFamily, scrollback: 5000 });
-    this.unfollow = followScheme(this.term);
-    this.term.loadAddon(this.fit);
-    const el = this.renderRoot.querySelector('.term')!;
-    this.term.open(el as HTMLElement);
-    this.fit.fit();
-    new ResizeObserver(() => this.fit.fit()).observe(el);
+    void this.term.open(this.renderRoot as ShadowRoot, this.renderRoot.querySelector('.term')!);
   }
 
   /** Open the browser's port chooser (needs a user gesture) and select the chosen port. */
@@ -117,7 +105,7 @@ export class ProbeSerialMonitor extends LitElement {
         if (this.connection !== conn) return;
         this.connection = null;
         this.status = `disconnected: ${reason}`;
-        this.term?.writeln(`\x1b[90m[${reason}]\x1b[0m`);
+        this.term.writeln(`\x1b[90m[${reason}]\x1b[0m`);
         this.emitState(false, reason);
       });
     } catch (e) {
@@ -131,7 +119,7 @@ export class ProbeSerialMonitor extends LitElement {
   }
 
   private onData(bytes: Uint8Array) {
-    this.term?.write(this.decoder.decode(bytes, { stream: true }));
+    this.term.write(this.decoder.decode(bytes, { stream: true }));
     for (const line of this.lines.push(bytes)) {
       this.dispatchEvent(new CustomEvent('serial-line', { detail: line, bubbles: true, composed: true }));
     }
@@ -186,7 +174,7 @@ export class ProbeSerialMonitor extends LitElement {
         ` : nothing}
         <span class="status">${this.status}</span>
         <span class="spacer"></span>
-        <button class="ghost" title="Clear the terminal" @click=${() => this.term?.clear()}>${icon('trash', 13)}Clear</button>
+        <button class="ghost" title="Clear the terminal" @click=${() => this.term.clear()}>${icon('trash', 13)}Clear</button>
       </div>
       <div class="term"></div>
       ${supported ? html`

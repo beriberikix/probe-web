@@ -9,14 +9,32 @@ Notable changes to probe-web. The format follows
 
 Monaco Editor is no longer part of the workbench's or the Monaco IDE example's first load.
 It is fetched the first time there is a source file to show — for the workbench, the first
-stop in code with debug info. Measured with `scripts/first-load.mjs` against a production
-build: the workbench went from **1231 kB to 238 kB** gzipped and the Monaco IDE example from
-**769 kB to 80 kB**. Nothing about either app's behaviour changed; the source panel's element
-still exists from the moment the dock mounts it, and breakpoint marks or a PC line that
-arrive before the editor does are replayed onto it.
+stop in code with debug info. The workbench went from **1231 kB to 238 kB** gzipped and the
+Monaco IDE example from **769 kB to 80 kB**. Nothing about either app's behaviour changed;
+the source panel's element still exists from the moment the dock mounts it, and breakpoint
+marks or a PC line that arrive before the editor does are replayed onto it.
+
+`@probe-web/ui` no longer loads xterm.js until an element actually shows a terminal.
+`<probe-rtt-terminal>` and `<probe-serial-monitor>` imported it at module scope, and because
+`index.ts` is a barrel that registers every element, a plain `import '@probe-web/ui'` paid
+for xterm on a page with no terminal on it. It is now fetched on first render, together with
+its stylesheet, which is adopted into the element's shadow root rather than baked into
+`static styles`. Output that arrives while xterm is still downloading is buffered and
+replayed, so a monitor loop or a serial port that starts producing immediately loses nothing.
+
+The flasher's first load went from **136 kB to 65 kB** gzipped and the React example's from
+**176 kB to 106 kB**. In a consumer that installs the tarball and imports
+`@probe-web/ui/serial-monitor`, the entry chunk is 13.7 kB and xterm is a separate 71.7 kB
+chunk that is only fetched when the element renders.
 
 `scripts/first-load.mjs` is new: it reports what each app downloads before it is interactive,
 and labels every chunk by what is actually inside it rather than by the name Vite gave it.
+
+### Fixed
+
+`npm run release:pack` packed every workspace, including the `apps/` and `examples/` ones
+that have no `version`, and failed with "Invalid package, must have name and version". It now
+names the six published packages.
 
 ## 0.5.1 - 2026-09-20
 
