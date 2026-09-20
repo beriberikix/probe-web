@@ -1,6 +1,7 @@
 import '../../shared/shell.ts';
 import '@probe-web/ui';
 import './layout.ts';
+import { prefetchWhenLikely } from '../../shared/prefetch.ts';
 import { describe, onDevicesChanged } from '@probe-web/devices';
 import { Client, Session, createLocalWorker, type FlashJob, type Wire } from '@probe-web/client';
 import { downloadBytes } from '@probe-web/artifacts';
@@ -181,6 +182,13 @@ flash.addEventListener('flash-done', async (e) => {
 flash.addEventListener('flash-failed', (e) => log(`flash failed: ${(e as CustomEvent).detail?.message ?? (e as CustomEvent).detail}`));
 $('connect').onclick = connect;
 $('attach').onclick = attach;
+
+// The worker's wasm is 2.8 MB compressed and nothing asks for it until connect. `?fake=1`
+// uses the fake-probe worker instead, so it would be 2.8 MB wasted.
+prefetchWhenLikely({
+  triggers: [$('connect'), $('attach')],
+  webusb: () => !qs.has('fake') && (document.querySelector('input[name=transport]:checked') as HTMLInputElement)?.value === 'webusb',
+});
 
 /** 4 KiB position-dependent test pattern with `tag` every 64 bytes. */
 function pattern(tag: string): Uint8Array {
