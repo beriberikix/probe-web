@@ -26,7 +26,27 @@ const client = await Client.connect({ kind: 'webusb' });
 has been granted, so the grant happens on the main thread with `requestProbe()`. Grants are
 per origin and persist, which is why all the hosted apps live on one site.
 
-The worker loads a wasm module of about 10 MB (under 2 MB compressed), which the browser caches after the first visit.
+The worker loads a wasm module of about 10 MB (2.8 MB over the wire), which the browser
+caches after the first visit. Nothing requests it until `Client.connect` runs, so by default
+the whole download sits inside the wait after the user has clicked connect. `prefetchWasm()`
+moves it out of that wait:
+
+```ts
+import { prefetchWasm } from '@probe-web/client';
+import { grantedDevices } from '@probe-web/devices';
+
+// This origin already has a probe, so this visitor has connected one here before.
+if ((await grantedDevices()).length) prefetchWasm();
+
+// Or simply when the pointer reaches the button that will need it.
+connectButton.addEventListener('pointerenter', () => prefetchWasm());
+```
+
+It is a hint, not a load: the browser fetches at idle priority into its HTTP cache, and
+nothing is instantiated or held in memory. Compiling the module costs about 30 ms whether the
+bytes came from the network or the cache, so what is worth avoiding is the download, not the
+compile. Call it when a probe is likely to be used rather than on page load — most visitors
+to a page are reading it, and a 2.8 MB maybe is a poor way to spend their bandwidth.
 
 Things to know:
 
