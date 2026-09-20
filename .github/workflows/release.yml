@@ -1,0 +1,105 @@
+name: Release
+
+# Pushing a v* tag is the whole release: this builds the wasm the packages ship, runs the
+# checks against it, publishes the six packages to npm with provenance, and opens the
+# GitHub release from the tag's CHANGELOG section.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the GitHub release
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustup installs the channel and the wasm32 target named in rust-toolchain.toml.
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      # Must match the wasm-bindgen crate version in Cargo.lock, or the glue and the
+      # module disagree.
+      - name: Install wasm-bindgen-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.128
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          # Writes the .npmrc that makes npm publish read NODE_AUTH_TOKEN.
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+
+      # A tag that disagrees with the manifests would publish a version nobody can trace
+      # back to it, so fail before anything is built.
+      - name: The tag matches the packages' version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for pkg in client ui dap devices artifacts serial; do
+            found=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "$found" != "$version" ]; then
+              echo "::error::@probe-web/$pkg is $found, but the tag says $version"
+              exit 1
+            fi
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The packages ship this: it is gitignored build output, not something the tag carries.
+      - name: Build the wasm crates
+        run: ./scripts/build-wasm.sh
+
+      - name: Generated wire types are up to date
+        run: git diff --exit-code packages/client/src/wire.ts
+
+      - run: npx tsc -b packages/client packages/ui packages/dap packages/devices packages/artifacts packages/serial apps/flash apps/workbench examples/monaco-ide examples/minimal-flash
+      - run: npm test
+
+      - name: Browser tests (fake probe, no hardware)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      # Dependencies before their dependents, so nobody can install an @probe-web/ui whose
+      # client is not on the registry yet. A version that is already published is skipped,
+      # which is what makes re-running this workflow after a partial failure safe.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -e
+          for pkg in devices artifacts serial client dap ui; do
+            if npm view "@probe-web/$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "@probe-web/$pkg@$VERSION is already published, skipping"
+            else
+              npm publish -w "@probe-web/$pkg" --provenance
+            fi
+          done
+
+      # The section the CHANGELOG already carries for this version is the release body.
+      - name: Release notes from the CHANGELOG
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## " v "( |$)" { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## $VERSION' section"
+            exit 1
+          fi
+          cat release-notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md

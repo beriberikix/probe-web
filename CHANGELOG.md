@@ -3,16 +3,34 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.5.0 - 2026-09-19
+## 0.5.0 - 2026-09-20
 
-The first released version, and the first on npm: `@probe-web/client`, `@probe-web/ui`,
-`@probe-web/dap`, `@probe-web/devices`, `@probe-web/artifacts` and `@probe-web/serial`,
-all at 0.5.0. They ship TypeScript source rather than a build, so a consuming bundler
-compiles them and needs the settings in
-[Getting started](https://beriberikix.github.io/probe-web/guide/getting-started).
+The first released version, and the first on npm.
 
-Not 1.0: WebUSB is Chromium-only, and probe-web builds on branches of probe-rs that are not
-upstream yet, so the API may still move as that work lands.
+```sh
+npm install @probe-web/client @probe-web/ui @probe-web/devices
+```
+
+Six packages, all at 0.5.0: [`@probe-web/client`](https://www.npmjs.com/package/@probe-web/client)
+(the SDK), [`@probe-web/ui`](https://www.npmjs.com/package/@probe-web/ui) (the components),
+[`@probe-web/dap`](https://www.npmjs.com/package/@probe-web/dap) (a Debug Adapter Protocol
+adapter), and [`@probe-web/devices`](https://www.npmjs.com/package/@probe-web/devices),
+[`@probe-web/artifacts`](https://www.npmjs.com/package/@probe-web/artifacts) and
+[`@probe-web/serial`](https://www.npmjs.com/package/@probe-web/serial). Or try it with
+nothing installed: the [flasher](https://beriberikix.github.io/probe-web/flash/) and the
+[workbench](https://beriberikix.github.io/probe-web/workbench/) run from the docs site.
+
+The packages ship TypeScript source rather than a build, so a consuming bundler compiles
+them and needs the Vite and `tsconfig.json` settings in
+[Getting started](https://beriberikix.github.io/probe-web/guide/getting-started). In Node
+they need `tsx` or another loader.
+
+Not 1.0: WebUSB is Chromium-only, probe-web builds on branches of probe-rs that are not
+upstream yet, and there is no disassembly over WebUSB. The API may still move as that work
+lands. See [Browser support and limitations](https://beriberikix.github.io/probe-web/reference/limitations).
+
+Verified on an FRDM-MCXA153 (CMSIS-DAP), an nRF9160 on a Thingy:91 (J-Link) and an ESP32-S3
+(built-in USB-JTAG), over both transports.
 
 ### Transports
 

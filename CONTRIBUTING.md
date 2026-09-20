@@ -103,34 +103,37 @@ checks in `hardware-tests/README.md` on at least one board. Say which in the pul
 
 ## Releases
 
+Pushing a `v*` tag is the release. `.github/workflows/release.yml` builds the wasm, runs the
+checks against it, publishes the six packages to npm with provenance, and opens the GitHub
+release from that version's CHANGELOG section. It needs one repository secret, `NPM_TOKEN`:
+an npm **Classic → Automation** token, which is the kind that bypasses 2FA on publish.
+
 The six `packages/*` share one version. The Rust crates are `publish = false` — they depend
 on git branches of a probe-rs fork, so they cannot go to crates.io.
 
-```sh
-npm login                          # npm whoami must print the account that owns @probe-web
-./scripts/build-wasm.sh            # the tarball ships this output; it is gitignored
-git diff --exit-code packages/client/src/wire.ts   # the wire types must already be committed
-```
-
-Then bump `version` in the six `packages/*/package.json` and the root `package.json`, and
-the `@probe-web/*` ranges in `packages/ui` and `packages/dap` to match (`^<version>`). Run
-`npm install` so the lockfile follows. Move the CHANGELOG's top section under a
-`## <version> - <date>` heading. Run every check above, then:
+To cut one, bump `version` in the six `packages/*/package.json` and the root
+`package.json`, and the `@probe-web/*` ranges in `packages/ui` and `packages/dap` to match
+(`^<version>`). Run `npm install` so the lockfile follows. Move the CHANGELOG's top section
+under a `## <version> - <date>` heading — the workflow reads it, and it fails if there is no
+section for the tag, or if the tag and the manifests disagree. Then:
 
 ```sh
-npm run release:pack               # six tarballs in ../pw-release, to install and try
-```
-
-`@probe-web/client`'s `prepack` refuses to pack without the wasm built. Commit, push, and
-publish in dependency order so each dependency is on the registry before its dependents:
-
-```sh
-for p in devices artifacts serial client dap ui; do npm publish -w @probe-web/$p; done
+git commit && git push
 git tag -a v<version> -m "probe-web <version>" && git push origin v<version>
-gh release create v<version> --title v<version> --notes-file <the CHANGELOG section>
 ```
 
-Tag after publishing, so a tag can only ever point at a commit that really is on npm.
+The packages ship TypeScript source, so before tagging it is worth installing the tarballs
+somewhere that is not this workspace — a linked package hides missing dependencies, an
+untransformed decorator and anything else that only bites a real consumer:
+
+```sh
+./scripts/build-wasm.sh    # the tarballs ship this output; it is gitignored
+npm run release:pack       # six tarballs in ../pw-release
+```
+
+`@probe-web/client`'s `prepack` refuses to pack without the wasm built. The workflow
+publishes dependencies before their dependents and skips a version that is already on the
+registry, so re-running it after a partial failure is safe.
 
 ## Pull requests
 
