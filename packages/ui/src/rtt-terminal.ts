@@ -1,6 +1,9 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { elfHasRtt, type MonitorEvent, type Session, type Wire } from '@probe-web/client';
+import type { MonitorEvent, Session, Wire } from '@probe-web/client';
+// From the wasm-free subpath: importing the main entry would put the client's wasm module --
+// and the probe-rs worker reachable beside it -- in the build of anyone using this element.
+import { elfHasRtt } from '@probe-web/client/elf';
 import { baseStyles } from './base-style.ts';
 import { LazyTerminal } from './lazy-terminal.ts';
 import { icon } from './icons.ts';

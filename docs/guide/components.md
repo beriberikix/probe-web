@@ -152,6 +152,13 @@ import '@probe-web/ui';                 // all of them
 xterm.js is loaded on demand, the first time `<probe-rtt-terminal>` or
 `<probe-serial-monitor>` renders, so a page that never shows a terminal never downloads it.
 
+**The elements load no wasm.** They use `@probe-web/client` for its types, and the one
+runtime helper they need — the `_SEGGER_RTT` lookup behind `<probe-rtt-terminal>` — comes
+from `@probe-web/client/elf`, which is plain JavaScript. So a page that uses the components
+without connecting a probe never fetches the SDK's wasm module or the probe-rs worker, and a
+bundler never puts them in its output. `<probe-target-picker>` is the one exception: importing
+a CMSIS pack needs wasm, and it is loaded when a pack is actually picked.
+
 `@probe-web/client` still needs one Vite setting, because it addresses its Worker and wasm
 with `new URL(..., import.meta.url)`; see
 [Getting started](./getting-started#use-the-sdk-in-your-own-page).

@@ -38,6 +38,29 @@ that succeeds proves nothing on its own, which is exactly how the Vite 8 failure
 
 ### Changed
 
+**`@probe-web/ui` no longer pulls in any wasm.** `<probe-rtt-terminal>` imported `elfHasRtt`
+from `@probe-web/client`, and that single value import was enough for a bundler to emit the
+client's wasm module *and* the probe-rs worker reachable beside it. A consumer who imported
+only `@probe-web/ui/rtt-terminal` got **10.9 MB of wasm** in their build output:
+
+```
+before                                    after
+  probe_web_core_bg.wasm    1,111 kB        (none)
+  probe_web_local_bg.wasm   9,818 kB        (none)
+  local-worker-*.js            15 kB        (none)
+  entry                      43.6 kB        entry  35.5 kB
+```
+
+The symbol lookup is now plain JavaScript in the new `@probe-web/client/elf` subpath, which
+imports nothing from the SDK. `elfSymbol` and `elfHasRtt` on the main entry are re-exports of
+it, so they no longer require `ensureWasm()` to have been called first — the "call after
+`ensureWasm()`" caveat is gone from both.
+
+Importing the whole `@probe-web/ui` barrel now costs no wasm either, apart from the CMSIS
+pack module behind `<probe-target-picker>`, which was already loaded only when a pack is
+picked.
+
+
 **`@probe-web/ui` now ships compiled JavaScript** (`dist/`) instead of TypeScript source.
 Its components use TypeScript's decorators, and nothing about an npm package can tell a
 consumer's toolchain to enable them. Shipping the package's own `tsconfig.json` covered a

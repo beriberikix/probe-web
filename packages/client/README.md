@@ -62,6 +62,11 @@ More: [Getting started](https://beriberikix.github.io/probe-web/guide/getting-st
 [RTT and defmt](https://beriberikix.github.io/probe-web/guide/rtt-defmt),
 [Testing](https://beriberikix.github.io/probe-web/guide/testing).
 
+
+`elfSymbol` and `elfHasRtt` are also available from `@probe-web/client/elf`, which is plain
+JavaScript and loads no wasm. Import them from there when a symbol lookup is all you need —
+the main entry pulls in the wasm module and, with it, the probe-rs worker.
+
 ## Debug
 
 `session.debugger()` returns a `Debugger` for one core: run control,

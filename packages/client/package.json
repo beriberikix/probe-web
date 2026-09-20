@@ -24,6 +24,7 @@
     "./package.json": "./package.json",
     ".": "./src/index.ts",
     "./wire": "./src/wire.ts",
+    "./elf": "./src/elf.ts",
     "./testing": "./src/testing/fake-debugger.ts",
     "./testing/worker": "./src/testing/fake-worker.ts",
     "./targets": "./src/targets.ts"
