@@ -14,7 +14,7 @@
 // It pins nothing by default because the failure it exists to catch was a *new* Vite
 // stripping decorator support: the repository builds on Vite 6, so only a check that
 // reaches past it can see that coming.
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
