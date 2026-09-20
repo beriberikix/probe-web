@@ -10,6 +10,7 @@ the components. They share one origin, so a probe granted to one is available to
 | [Inspector](/inspect/){target="_self"} | What is behind a probe without a chip description: debug ports, access ports and ROM tables, like `probe-rs info` | `apps/inspect` |
 | [Monaco IDE](/monaco-ide/){target="_self"} | A minimal IDE that debugs only through the DAP adapter | `examples/monaco-ide` |
 | [Minimal flash](/minimal-flash/){target="_self"} | The shortest complete flashing page | `examples/minimal-flash` |
+| [React flash](/react-flash/){target="_self"} | The same flow in React, with the elements wrapped for it (see [Using with React](../guide/react)) | `examples/react-flash` |
 
 The flasher, workbench and inspector each have a transport selector. Choose *WebSocket*
 and enter the URL and token of a `probe-rs serve` to use a native server instead of WebUSB.

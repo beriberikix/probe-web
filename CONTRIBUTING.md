@@ -74,7 +74,7 @@ CI runs all of these. Run the ones your change touches:
 
 ```sh
 npx tsc -b packages/client packages/ui packages/dap packages/devices packages/artifacts packages/serial \
-  apps/flash apps/workbench examples/monaco-ide examples/minimal-flash
+  apps/flash apps/workbench examples/monaco-ide examples/minimal-flash examples/react-flash
 npm test                                   # vitest
 npx playwright test                        # browser suite against the fake probe
 npm run docs:build                         # TypeDoc (warnings are errors) + VitePress (dead links fail)

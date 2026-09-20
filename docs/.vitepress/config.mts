@@ -25,6 +25,7 @@ const apps: DefaultTheme.NavItemWithLink[] = [
   { text: 'Workbench', link: '/workbench/', target: '_self' },
   { text: 'Inspector', link: '/inspect/', target: '_self' },
   { text: 'Monaco IDE example', link: '/monaco-ide/', target: '_self' },
+  { text: 'React example', link: '/react-flash/', target: '_self' },
 ];
 
 export default defineConfig({
@@ -73,6 +74,7 @@ export default defineConfig({
           text: 'Building UIs',
           items: [
             { text: 'Web components', link: '/guide/components' },
+            { text: 'Using with React', link: '/guide/react' },
             { text: 'IDE integration (DAP)', link: '/guide/ide-integration' },
             { text: 'Firmware files', link: '/guide/artifacts' },
             { text: 'Serial monitor', link: '/guide/serial' },

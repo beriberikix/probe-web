@@ -129,8 +129,16 @@ code, `onSchemeChange` and `terminalTheme` do the same job.
 `<probe-rtt-terminal>` and `<probe-serial-monitor>` are 320 and 260 pixels tall by default.
 To make one fill its container, give the element a height and set `--pw-terminal-height: 0`.
 
+## Using with React
+
+The elements work in React, but object properties and custom events need a little wiring.
+[Using with React](./react) covers it, with a complete example.
+
 ## Bundling
 
-The package ships TypeScript source that uses Lit's decorators. Compile it with
-`experimentalDecorators: true` and `useDefineForClassFields: false`. The package's own
-`tsconfig.json` sets both, and Vite and esbuild pick it up.
+The package ships TypeScript source that uses Lit's decorators, so whatever compiles it needs
+`experimentalDecorators: true` and `useDefineForClassFields: false`. The package ships its own
+`tsconfig.json` with both, which is enough for a dev server transforming the files directly —
+but *not* for a bundler's dependency optimizer or production build, which do not read a
+`tsconfig.json` inside `node_modules`. Pass the options explicitly; the Vite settings are in
+[Getting started](./getting-started#use-the-sdk-in-your-own-page).

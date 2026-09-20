@@ -1,0 +1,12 @@
+/* The elements bring their own look from theme.css; this is just page furniture. */
+body {
+  margin: 0;
+  font-family: var(--pw-font-family-base);
+  background: var(--pw-c-bg);
+  color: var(--pw-c-text-1);
+}
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 24px; }
+h2 { font-size: 15px; color: var(--pw-c-text-2); font-weight: 600; margin: 28px 0 8px; }
+section > p { margin: 10px 0 0; }
+.error { color: var(--pw-c-red-1); }

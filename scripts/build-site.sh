@@ -11,6 +11,7 @@
 #   <base>inspect/        the inspector
 #   <base>monaco-ide/     the Monaco IDE example
 #   <base>minimal-flash/  the minimal flashing example
+#   <base>react-flash/    the React example
 #   <base>firmware/, *.json, svd/, targets/   demo firmware, manifests and data the apps load
 #
 # Run scripts/build-wasm.sh first (and scripts/build-firmware.sh for the demo images); this
@@ -27,7 +28,8 @@ npx vite build --config vite.site.config.ts --base "$base"
 # Vite writes each entry's HTML under its source path; move them where they are served from.
 # Asset URLs inside are absolute (they start with `base`), so moving the files is safe.
 for app in flash:apps/flash inspect:apps/inspect workbench:apps/workbench \
-  monaco-ide:examples/monaco-ide minimal-flash:examples/minimal-flash; do
+  monaco-ide:examples/monaco-ide minimal-flash:examples/minimal-flash \
+  react-flash:examples/react-flash; do
   mkdir -p "$out/${app%%:*}"
   mv "$out/${app#*:}/index.html" "$out/${app%%:*}/index.html"
 done

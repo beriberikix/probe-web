@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 // One build for every app and example, so they share chunks: built separately, each carried its own copy of
 // the 10 MB probe-rs worker and the client wasm. The apps end up under one origin anyway —
@@ -8,6 +9,8 @@ import { defineConfig } from 'vite';
 const app = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
+  // Only examples/react-flash has JSX; the plugin leaves every other app alone.
+  plugins: [react()],
   // The repo root, so one build can reach every app. Their entry scripts are referenced
   // relatively (`./src/main.ts`) for the same reason.
   root: fileURLToPath(new URL('.', import.meta.url)),
@@ -30,6 +33,7 @@ export default defineConfig({
         workbench: app('apps/workbench/index.html'),
         'monaco-ide': app('examples/monaco-ide/index.html'),
         'minimal-flash': app('examples/minimal-flash/index.html'),
+        'react-flash': app('examples/react-flash/index.html'),
       },
     },
   },
