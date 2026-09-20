@@ -32,6 +32,10 @@ the Thingy:91), select your probe and flash. Then open the
 
 ## Use the SDK
 
+```sh
+npm install @probe-web/client @probe-web/ui @probe-web/devices
+```
+
 ```ts
 import { Client } from '@probe-web/client';
 import { requestProbe } from '@probe-web/devices';
@@ -53,8 +57,10 @@ Or drop in the components:
 <probe-rtt-terminal></probe-rtt-terminal>
 ```
 
-The [guide](https://beriberikix.github.io/probe-web/guide/getting-started) covers each part.
-The packages are not on npm yet, so use them from a clone of this repository.
+The packages ship TypeScript source rather than a build, so a bundler compiles them along
+with your own code. That needs a little configuration — the
+[guide](https://beriberikix.github.io/probe-web/guide/getting-started) has the Vite and
+`tsconfig.json` settings, and covers each part of the API.
 
 ## What is here
 
@@ -109,7 +115,8 @@ npx playwright test      # every app and component against a fake probe, no hard
 npm run docs:dev         # the documentation site, with the API reference
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how the pieces fit and how to work on them.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the pieces fit and how to work on them, and
+[CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## License
 

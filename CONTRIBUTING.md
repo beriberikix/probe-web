@@ -101,6 +101,37 @@ checks in `hardware-tests/README.md` on at least one board. Say which in the pul
 
 `npm run docs:dev` serves the site with the API reference at http://localhost:5180.
 
+## Releases
+
+The six `packages/*` share one version. The Rust crates are `publish = false` — they depend
+on git branches of a probe-rs fork, so they cannot go to crates.io.
+
+```sh
+npm login                          # npm whoami must print the account that owns @probe-web
+./scripts/build-wasm.sh            # the tarball ships this output; it is gitignored
+git diff --exit-code packages/client/src/wire.ts   # the wire types must already be committed
+```
+
+Then bump `version` in the six `packages/*/package.json` and the root `package.json`, and
+the `@probe-web/*` ranges in `packages/ui` and `packages/dap` to match (`^<version>`). Run
+`npm install` so the lockfile follows. Move the CHANGELOG's top section under a
+`## <version> - <date>` heading. Run every check above, then:
+
+```sh
+npm run release:pack               # six tarballs in ../pw-release, to install and try
+```
+
+`@probe-web/client`'s `prepack` refuses to pack without the wasm built. Commit, push, and
+publish in dependency order so each dependency is on the registry before its dependents:
+
+```sh
+for p in devices artifacts serial client dap ui; do npm publish -w @probe-web/$p; done
+git tag -a v<version> -m "probe-web <version>" && git push origin v<version>
+gh release create v<version> --title v<version> --notes-file <the CHANGELOG section>
+```
+
+Tag after publishing, so a tag can only ever point at a commit that really is on npm.
+
 ## Pull requests
 
 Keep them focused. The description should say what changed, why, and how it was tested:

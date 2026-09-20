@@ -1,5 +1,6 @@
 {
   "name": "probe-web",
+  "version": "0.5.0",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -11,6 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:workspaces": "npm test --workspaces --if-present",
+    "release:pack": "npm pack --workspaces --pack-destination ../pw-release",
     "docs:api": "typedoc",
     "docs:dev": "typedoc && vitepress dev docs",
     "docs:build": "typedoc && vitepress build docs",

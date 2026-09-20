@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/ui",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "Web components for flashing and debugging embedded targets from a browser, on @probe-web/client",
   "keywords": [
     "probe-rs",
@@ -19,6 +19,7 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": "./src/index.ts",
     "./device-picker": "./src/device-picker.ts",
     "./flash-panel": "./src/flash-panel.ts",
@@ -41,13 +42,20 @@
     "./color-scheme": "./src/color-scheme.ts",
     "./terminal-theme": "./src/terminal-theme.ts"
   },
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@probe-web/client": "*",
-    "@probe-web/devices": "*",
-    "@probe-web/artifacts": "*",
+    "@probe-web/client": "^0.5.0",
+    "@probe-web/devices": "^0.5.0",
+    "@probe-web/artifacts": "^0.5.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lit": "^3.2.0",
-    "@probe-web/serial": "*"
+    "@probe-web/serial": "^0.5.0"
   }
 }

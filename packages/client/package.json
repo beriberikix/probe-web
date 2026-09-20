@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/client",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "The probe-rs SDK for browsers and Node: flash, RTT, defmt, semihosting and a debugger, over WebUSB or WebSocket",
   "keywords": [
     "probe-rs",
@@ -21,6 +21,7 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": "./src/index.ts",
     "./wire": "./src/wire.ts",
     "./testing": "./src/testing/fake-debugger.ts",
@@ -31,10 +32,15 @@
     "src",
     "wasm",
     "worker",
-    "targets"
+    "targets",
+    "tsconfig.json"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepack": "node ../../scripts/check-wasm.mjs"
   },
   "devDependencies": {
     "vitest": "^2.1.0"

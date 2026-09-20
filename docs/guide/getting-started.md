@@ -22,8 +22,52 @@ verified.
 
 ## Use the SDK in your own page
 
-The packages are not published to npm yet. Use them from a clone of the repository (see
-[Building from source](#building-from-source)), or point a workspace dependency at it.
+```sh
+npm install @probe-web/client @probe-web/ui @probe-web/devices
+```
+
+The packages ship TypeScript source rather than a build, so your bundler compiles them
+along with your own code, and it needs to be told how. With Vite:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+
+// @probe-web/ui's components use TypeScript's decorators, so the dependency has to be
+// compiled with them enabled — in the dev-time dependency optimizer and in the build.
+const tsconfigRaw = { compilerOptions: { experimentalDecorators: true, useDefineForClassFields: false } };
+
+export default defineConfig({
+  esbuild: { tsconfigRaw },
+  optimizeDeps: {
+    // probe-rs's Worker and wasm are addressed with `new URL(..., import.meta.url)`,
+    // which does not survive dependency pre-bundling.
+    exclude: ['@probe-web/client'],
+    esbuildOptions: { tsconfigRaw },
+  },
+  worker: { format: 'es' },
+});
+```
+
+Your `tsconfig.json` needs the matching options, so `tsc` reads the packages the same way:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "noEmit": true,
+    "types": ["vite/client", "w3c-web-usb"]
+  }
+}
+```
+
+In Node, use [tsx](https://tsx.is) or another loader — Node's own type stripping refuses
+files under `node_modules`. See [Node and CI](./node-and-ci). To work against the packages
+themselves instead, use them from a clone (see [Building from source](#building-from-source)).
 
 ```ts
 import { Client } from '@probe-web/client';

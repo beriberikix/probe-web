@@ -6,6 +6,10 @@ next to the probe so a page can show both. `requestPort()` and
 `grantedPorts()` find a port, `SerialConnection` opens it and runs the read
 loop, and `LineDecoder` turns bytes into lines.
 
+```sh
+npm install @probe-web/serial
+```
+
 ```ts
 import { LineDecoder, SerialConnection, requestPort } from '@probe-web/serial';
 

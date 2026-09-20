@@ -1,12 +1,18 @@
 # Changelog
 
 Notable changes to probe-web. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Nothing has been released to npm
-yet.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.5.0 - 2026-09-19
 
-The first public version.
+The first released version, and the first on npm: `@probe-web/client`, `@probe-web/ui`,
+`@probe-web/dap`, `@probe-web/devices`, `@probe-web/artifacts` and `@probe-web/serial`,
+all at 0.5.0. They ship TypeScript source rather than a build, so a consuming bundler
+compiles them and needs the settings in
+[Getting started](https://beriberikix.github.io/probe-web/guide/getting-started).
+
+Not 1.0: WebUSB is Chromium-only, and probe-web builds on branches of probe-rs that are not
+upstream yet, so the API may still move as that work lands.
 
 ### Transports
 

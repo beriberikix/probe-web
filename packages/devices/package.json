@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/devices",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "WebUSB debug-probe lifecycle: request, list, hotplug and per-tab locking",
   "keywords": [
     "probe-rs",
@@ -18,9 +18,17 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": "./src/index.ts"
   },
-  "devDependencies": {
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
     "@types/w3c-web-usb": "^1.0.10"
   }
 }

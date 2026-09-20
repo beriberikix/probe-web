@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/dap",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "Debug Adapter Protocol for probe-rs in the browser (inline adapter over @probe-web/client's Debugger)",
   "keywords": [
     "probe-rs",
@@ -19,16 +19,24 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
-    "@probe-web/client": "*"
+    "@probe-web/client": "^0.5.0",
+    "@vscode/debugprotocol": "^1.68.0"
   },
   "devDependencies": {
-    "@vscode/debugprotocol": "^1.68.0",
     "vitest": "^2.1.0"
   }
 }

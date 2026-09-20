@@ -5,6 +5,10 @@ from a browser, built on [`@probe-web/client`](https://github.com/beriberikix/pr
 `client`, `session` or `debugger` property, works on its own, and reports what happens
 through DOM events, which bubble and cross shadow roots.
 
+```sh
+npm install @probe-web/ui
+```
+
 | Element | Purpose | Key events |
 |---|---|---|
 | `<probe-device-picker>` | List the client's probes; authorize a new WebUSB device | `probe-selected`, `device-authorized` |

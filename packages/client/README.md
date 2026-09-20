@@ -4,6 +4,10 @@ The headless probe-rs SDK for browsers (and Node). List probes, attach to a chip
 flash firmware, stream RTT, defmt and semihosting output, run `embedded-test`
 suites and debug — with one API over two transports.
 
+```sh
+npm install @probe-web/client
+```
+
 ## Transports
 
 | | `webusb` | `websocket` |

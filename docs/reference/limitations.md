@@ -37,4 +37,9 @@ during development.
   named frames above them are correct.
 - **probe-rs forks.** The WebUSB transport and `probe-rs serve` build from forks of
   probe-rs until the async and wasm work is upstream. See [Architecture](../guide/architecture#the-probe-rs-forks).
-- **Not on npm yet.** Use the packages from a clone of the repository.
+- **The packages ship TypeScript source**, not a compiled build, so a consuming bundler
+  compiles them and has to be configured for it — decorators for `@probe-web/ui`, and no
+  dependency pre-bundling for `@probe-web/client`, whose Worker and wasm are addressed with
+  `new URL(..., import.meta.url)`. [Getting started](../guide/getting-started) has the
+  settings. In Node the packages need `tsx` or another loader: Node's own type stripping
+  refuses files under `node_modules`.

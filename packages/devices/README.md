@@ -6,6 +6,10 @@ visits, `onDevicesChanged()` reports hotplug, `withProbeLock()` keeps two tabs
 from claiming the same probe, and `describe()` gives a label for a device. The
 probe-rs worker in `@probe-web/client` only sees devices granted here.
 
+```sh
+npm install @probe-web/devices
+```
+
 ```ts
 import { describe, probeKey, requestProbe, withProbeLock } from '@probe-web/devices';
 

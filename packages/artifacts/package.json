@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/artifacts",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "Firmware files in the browser: pick, remember and watch files for re-flash on rebuild",
   "keywords": [
     "probe-rs",
@@ -18,7 +18,15 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run"

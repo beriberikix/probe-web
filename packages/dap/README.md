@@ -7,6 +7,10 @@ DAP requests through `handleMessage()` and sends responses and events to
 `DebugAdapterInlineImplementation` expects, so an editor can debug firmware
 without a native adapter process.
 
+```sh
+npm install @probe-web/dap
+```
+
 ```ts
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
 import { ProbeDebugAdapter } from '@probe-web/dap';

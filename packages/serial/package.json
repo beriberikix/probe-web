@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/serial",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "WebSerial console for boards whose output is on a UART bridge (not probe-rs)",
   "keywords": [
     "embedded",
@@ -18,7 +18,15 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run"

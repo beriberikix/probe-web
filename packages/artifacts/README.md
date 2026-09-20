@@ -6,6 +6,10 @@ rebuild re-flashes without another file dialog. Drag-dropped files
 (`fromFile`) and URLs (`fromUrl`) share the same `ArtifactSource` shape, and
 `downloadBytes()` hands a file (a coredump, a memory dump) back to the user.
 
+```sh
+npm install @probe-web/artifacts
+```
+
 ```ts
 import { pickFile, rememberHandle } from '@probe-web/artifacts';
 

@@ -10,7 +10,7 @@
  *
  * @module testing/worker
  */
-import { workerLogLevel } from '../index.js';
+import { workerLogLevel } from '../index.ts';
 
 /**
  * A worker running probe-rs with a fake probe and a mocked core (`probe_rs::integration`),

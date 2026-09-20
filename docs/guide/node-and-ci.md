@@ -12,12 +12,19 @@ const [probe] = await client.listProbes();
 const session = await client.attach({ probe, chip: 'nRF9160_xxAA', protocol: 'Swd' });
 ```
 
-The packages ship TypeScript source written to be runnable with Node's type stripping, so
-Node 22.18 or newer runs a `.ts` script directly:
+The packages ship TypeScript source, so a script that imports them needs a loader that
+compiles it. Node's own type stripping is not enough: it refuses files under `node_modules`
+(`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), which is where an installed
+`@probe-web/client` lives. Use [tsx](https://tsx.is):
 
 ```sh
-node run.ts --elf firmware.elf --chip nRF9160_xxAA
+npx tsx run.ts --elf firmware.elf --chip nRF9160_xxAA
 ```
+
+Inside a checkout of this repository `node run.ts` does work, because npm links the
+workspace packages and Node resolves the link back to `packages/client`, outside
+`node_modules`. That is why `examples/node-ci` runs with
+`node --experimental-transform-types`.
 
 In Node the client loads its wasm from disk. WebUSB is not available there.
 
