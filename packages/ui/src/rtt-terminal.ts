@@ -1,11 +1,8 @@
-import { LitElement, css, html, nothing, unsafeCSS } from 'lit';
+import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import { elfHasRtt, type MonitorEvent, type Session, type Wire } from '@probe-web/client';
 import { baseStyles } from './base-style.ts';
-import { followScheme, terminalFontFamily } from './terminal-theme.ts';
+import { LazyTerminal } from './lazy-terminal.ts';
 import { icon } from './icons.ts';
 
 /**
@@ -38,7 +35,7 @@ import { icon } from './icons.ts';
 @customElement('probe-rtt-terminal')
 export class ProbeRttTerminal extends LitElement {
   /** @internal */
-  static styles = [unsafeCSS(xtermCss), baseStyles, css`
+  static styles = [baseStyles, css`
     :host { display: flex; flex-direction: column; }
     .row { margin: 0 0 6px; }
     .term {
@@ -61,30 +58,22 @@ export class ProbeRttTerminal extends LitElement {
   @state() private running = false;
   @state() private status = 'idle';
   @state() private channels: Wire.ChannelInfo[] = [];
-  private term: Terminal | null = null;
-  private fit = new FitAddon();
+  private term = new LazyTerminal();
   private line = '';
-  private unfollow: (() => void) | null = null;
 
   disconnectedCallback() {
-    this.unfollow?.();
-    this.unfollow = null;
+    this.term.unfollow();
     super.disconnectedCallback();
   }
 
   connectedCallback() {
     super.connectedCallback();
-    if (this.term && !this.unfollow) this.unfollow = followScheme(this.term);
+    this.term.follow();
   }
 
   firstUpdated() {
-    this.term = new Terminal({ convertEol: true, fontSize: 12, fontFamily: terminalFontFamily, scrollback: 5000 });
-    this.unfollow = followScheme(this.term);
-    this.term.loadAddon(this.fit);
-    this.term.open(this.renderRoot.querySelector('.term')!);
-    this.fit.fit();
     this.term.onData((d) => this.onInput(d));
-    new ResizeObserver(() => this.fit.fit()).observe(this.renderRoot.querySelector('.term')!);
+    void this.term.open(this.renderRoot as ShadowRoot, this.renderRoot.querySelector('.term')!);
   }
 
   private onInput(d: string) {
@@ -92,13 +81,13 @@ export class ProbeRttTerminal extends LitElement {
     if (d === '\r') {
       const text = this.line + '\n';
       this.line = '';
-      this.term?.write('\r\n');
-      void this.session.rttWrite(0, text).catch((e) => this.term?.writeln(`\x1b[31m[rtt write failed: ${e}]\x1b[0m`));
+      this.term.write('\r\n');
+      void this.session.rttWrite(0, text).catch((e) => this.term.writeln(`\x1b[31m[rtt write failed: ${e}]\x1b[0m`));
     } else if (d === '\x7f') {
-      if (this.line) { this.line = this.line.slice(0, -1); this.term?.write('\b \b'); }
+      if (this.line) { this.line = this.line.slice(0, -1); this.term.write('\b \b'); }
     } else {
       this.line += d;
-      this.term?.write(d);
+      this.term.write(d);
     }
   }
 
@@ -119,11 +108,11 @@ export class ProbeRttTerminal extends LitElement {
       if (useRtt) await this.session.createRttClient({ elf, defaults: { dataFormat: this.defmtElf ? 'Defmt' : 'String' } });
       else {
         this.session.clearRttClient();
-        this.term?.writeln('\x1b[90m[ELF has no RTT control block; monitoring semihosting only]\x1b[0m');
+        this.term.writeln('\x1b[90m[ELF has no RTT control block; monitoring semihosting only]\x1b[0m');
       }
       if (useRtt && this.defmtElf) {
         const ok = this.session.setDefmtElf(this.defmtElf);
-        if (!ok) this.term?.writeln('\x1b[33m[ELF has no defmt table; showing raw bytes]\x1b[0m');
+        if (!ok) this.term.writeln('\x1b[33m[ELF has no defmt table; showing raw bytes]\x1b[0m');
       }
       const exit = await this.session.monitor(this.bootInfo ?? 'attach', (e) => this.onEvent(e));
       this.status = `stopped: ${typeof exit === 'string' ? exit : JSON.stringify(exit)}`;
@@ -149,7 +138,6 @@ export class ProbeRttTerminal extends LitElement {
   onEvent(e: MonitorEvent) {
     this.dispatchEvent(new CustomEvent('monitor-event', { detail: e, bubbles: true, composed: true }));
     const t = this.term;
-    if (!t) return;
     switch (e.kind) {
       case 'rtt-discovered':
         this.channels = e.up;
@@ -180,7 +168,7 @@ export class ProbeRttTerminal extends LitElement {
         <span class="status">${this.status}</span>
         ${this.channels.length ? html`<span class="status">${this.channels.map((c) => c.name).join(' · ')}</span>` : nothing}
         <span class="spacer"></span>
-        <button class="ghost" title="Clear the terminal" @click=${() => this.term?.clear()}>${icon('trash', 13)}Clear</button>
+        <button class="ghost" title="Clear the terminal" @click=${() => this.term.clear()}>${icon('trash', 13)}Clear</button>
       </div>
       <div class="term"></div>
     `;
