@@ -105,8 +105,20 @@ checks in `hardware-tests/README.md` on at least one board. Say which in the pul
 
 Pushing a `v*` tag is the release. `.github/workflows/release.yml` builds the wasm, runs the
 checks against it, publishes the six packages to npm with provenance, and opens the GitHub
-release from that version's CHANGELOG section. It needs one repository secret, `NPM_TOKEN`:
-an npm **Classic → Automation** token, which is the kind that bypasses 2FA on publish.
+release from that version's CHANGELOG section.
+
+It authenticates with one repository secret, `NPM_TOKEN`: a **granular** access token with
+read and write on the `@probe-web` scope and **"Bypass 2FA" checked** — without that box a
+publish stops and asks for a one-time password, which a workflow cannot answer. npm caps
+granular tokens at **90 days**, so this secret expires and the release workflow starts
+failing on `EOTP` or `E401` until it is replaced.
+
+The way out of that treadmill is [trusted
+publishing](https://docs.npmjs.com/trusted-publishers): npm trusts this repository and
+workflow file over OIDC, with no token at all. It can only be configured for a package that
+already exists, so it is set up per package on npmjs.com after a first release, and then
+`NPM_TOKEN` and the `registry-url`/`NODE_AUTH_TOKEN` lines in the workflow can go (npm 11.5.1
+or newer generates provenance by itself, so `--provenance` goes too).
 
 The six `packages/*` share one version. The Rust crates are `publish = false` — they depend
 on git branches of a probe-rs fork, so they cannot go to crates.io.
