@@ -6,8 +6,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "allowImportingTsExtensions": true,
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",

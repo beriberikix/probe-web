@@ -21,6 +21,10 @@ cd "$(dirname "$0")/.."
 base=${1:-/}
 out=$(pwd)/site
 
+# @probe-web/ui ships compiled JS: the apps resolve it through its dist/, the same way an
+# npm consumer does, so it has to exist before Vite runs.
+npm run build -w @probe-web/ui
+
 # One build for every app (vite.site.config.ts), so the 10 MB worker and the client wasm
 # are emitted once and shared instead of once per app.
 npx vite build --config vite.site.config.ts --base "$base"

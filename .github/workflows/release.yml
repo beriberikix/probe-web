@@ -75,6 +75,16 @@ jobs:
       - name: Generated wire types are up to date
         run: git diff --exit-code packages/client/src/wire.ts
 
+      - name: Generated xterm stylesheet is up to date
+        run: |
+          node scripts/gen-xterm-css.mjs
+          git diff --exit-code packages/ui/src/xterm-css.generated.ts
+
+      # @probe-web/ui's own `prepack` builds this again at publish time; doing it here means
+      # tsc and the suite below run against the compiled package, not the source.
+      - name: Build @probe-web/ui
+        run: npm run build -w @probe-web/ui
+
       - run: npx tsc -b packages/client packages/ui packages/dap packages/devices packages/artifacts packages/serial apps/flash apps/workbench examples/monaco-ide examples/minimal-flash examples/react-flash
       - run: npm test
 

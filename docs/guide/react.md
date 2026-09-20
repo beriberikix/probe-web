@@ -124,29 +124,21 @@ import '@probe-web/ui/theme.css';
 
 ## Build settings
 
-`@probe-web/ui` ships TypeScript source whose components use Lit's decorators, and
-`@probe-web/client` addresses its Worker and wasm with `new URL(..., import.meta.url)`. A
-Vite React app needs to account for both:
+`@probe-web/client` addresses its Worker and wasm with `new URL(..., import.meta.url)`,
+which does not survive dependency pre-bundling. That is the only thing a Vite React app has
+to account for:
 
 ```ts
 // vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const tsconfigRaw = { compilerOptions: { experimentalDecorators: true, useDefineForClassFields: false } };
-
 export default defineConfig({
   plugins: [react()],
-  esbuild: { tsconfigRaw },
-  optimizeDeps: {
-    exclude: ['@probe-web/client', '@probe-web/ui', '@probe-web/devices', '@probe-web/artifacts'],
-    esbuildOptions: { tsconfigRaw },
-  },
+  optimizeDeps: { exclude: ['@probe-web/client'] },
   worker: { format: 'es' },
 });
 ```
 
-Both `esbuild` and `optimizeDeps.esbuildOptions` are needed: the first covers the production
-build, the second the dev server's dependency optimizer. With only one of them the app works
-in one mode and fails in the other. Your `tsconfig.json` wants `"jsx": "react-jsx"` alongside
-the options in [Getting started](./getting-started).
+Your `tsconfig.json` wants `"jsx": "react-jsx"` alongside the options in
+[Getting started](./getting-started).

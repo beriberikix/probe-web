@@ -24,7 +24,9 @@ function loadXterm() {
     const [{ Terminal }, { FitAddon }, { default: styles }] = await Promise.all([
       import('@xterm/xterm'),
       import('@xterm/addon-fit'),
-      import('@xterm/xterm/css/xterm.css?inline'),
+      // A committed copy of xterm's stylesheet rather than the bundler's `?inline`, which
+      // only Vite understands. See scripts/gen-xterm-css.mjs.
+      import('./xterm-css.generated.ts'),
     ]);
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(styles);

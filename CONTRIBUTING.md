@@ -16,11 +16,18 @@ explains the design.
 ```sh
 npm install
 ./scripts/build-wasm.sh      # the three wasm crates, the fake-probe worker, and wire.ts
+npm run build -w @probe-web/ui  # the components, compiled (about a second)
 ./scripts/build-firmware.sh  # optional: demo and test firmware (Cortex-M)
 npm run dev -w apps/flash    # every app on http://127.0.0.1:5173
 ```
 
 Re-run `build-wasm.sh` after changing anything under `crates/`.
+
+`@probe-web/ui` is the one package that ships compiled JavaScript rather than source: its
+components use decorators, and nothing about an npm package can tell a consumer's toolchain
+to enable them. The apps and examples resolve it through its `dist/` exactly as an installed
+copy would, so **it has to be built before they will run**. While working on a component,
+keep `npx tsc -p packages/ui/tsconfig.build.json --watch` going in another terminal.
 
 ## Layout
 
@@ -49,6 +56,8 @@ Do not edit these by hand:
 |---|---|---|
 | `packages/client/src/wire.ts` | `tools/wire-gen` (run by `scripts/build-wasm.sh`) | Whenever the probe-rs-rpc revision changes. CI fails if it is stale. |
 | `packages/client/src/registers.generated.ts` | `scripts/gen-registers.py <probe-rs checkout>` | When probe-rs's register tables change. |
+| `packages/ui/src/xterm-css.generated.ts` | `node scripts/gen-xterm-css.mjs` | After upgrading `@xterm/xterm`. CI fails if it is stale. |
+| `packages/ui/dist/` | `npm run build -w @probe-web/ui` | Whenever `packages/ui/src` changes. Gitignored. |
 | `docs/api/` | `npm run docs:api` (TypeDoc) | On every docs build; not committed. |
 
 ## Reading a worker crash
@@ -144,6 +153,19 @@ git tag -a v<version> -m "probe-web <version>" && git push origin v<version>
 The packages ship TypeScript source, so before tagging it is worth installing the tarballs
 somewhere that is not this workspace — a linked package hides missing dependencies, an
 untransformed decorator and anything else that only bites a real consumer:
+
+```sh
+node scripts/check-consumer.mjs             # against the latest Vite
+node scripts/check-consumer.mjs --vite 6    # or a specific one
+```
+
+That packs the six tarballs, installs them into a throwaway app with the minimum
+configuration a consumer should need, builds it, and **loads the result in a browser** — a
+build that succeeds proves nothing on its own, which is how #7 went unnoticed. CI runs it on
+every pull request against the latest Vite, because this repository builds on Vite 6 and the
+failures worth catching come from versions ahead of it.
+
+To pack the tarballs without the rest:
 
 ```sh
 ./scripts/build-wasm.sh    # the tarballs ship this output; it is gitignored
