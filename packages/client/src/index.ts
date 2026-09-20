@@ -21,7 +21,8 @@
  *
  * @packageDocumentation
  */
-import init, { ProbeWebClient, ProbeWebSession, ProbeWebCore, elfSymbolAddress, rttSymbolAddress } from '../wasm/probe_web_core.js';
+import init, { ProbeWebClient, ProbeWebSession, ProbeWebCore } from '../wasm/probe_web_core.js';
+import { elfHasRtt as elfHasRttJs, elfSymbol as elfSymbolJs } from './elf.ts';
 import type * as Wire from './wire';
 import { Debugger, type DebugSessionLike, type DebuggerOptions } from './debugger.ts';
 
@@ -34,15 +35,21 @@ export type { Breakpoint, DebugCoreLike, DebugOutput, DebugSessionLike, Debugger
 
 let wasmReady: Promise<unknown> | null = null;
 
-/** Address of a symbol in an ELF (exact name). Call after `ensureWasm()`. */
-export function elfSymbol(elf: Uint8Array, name: string): bigint | undefined {
-  return elfSymbolAddress(elf, name);
-}
+/**
+ * Address of a symbol in an ELF (exact name).
+ *
+ * Re-exported from `@probe-web/client/elf`, which is plain JavaScript and pulls in
+ * no wasm — import it from there if a symbol lookup is all you need.
+ */
+export const elfSymbol = elfSymbolJs;
 
-/** Whether an ELF links an RTT control block (`_SEGGER_RTT`). Call after `ensureWasm()`. */
-export function elfHasRtt(elf: Uint8Array): boolean {
-  return rttSymbolAddress(elf) !== undefined;
-}
+/**
+ * Whether an ELF links an RTT control block (`_SEGGER_RTT`).
+ *
+ * Re-exported from `@probe-web/client/elf`, which is plain JavaScript and pulls in
+ * no wasm — import it from there if this is all you need.
+ */
+export const elfHasRtt = elfHasRttJs;
 
 const isNode = !!(globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node;
 
@@ -642,7 +649,7 @@ export class Session {
   createRttClient(opts: { scanRegion?: Wire.ScanRegion; /** ELF of the firmware: its `_SEGGER_RTT` symbol gives an exact scan region */ elf?: Uint8Array; channels?: RttChannelConfigInput[]; defaults?: RttChannelConfigInput } = {}): Promise<Wire.RttClientData> {
     let region: Wire.ScanRegion = opts.scanRegion ?? 'Ram';
     if (!opts.scanRegion && opts.elf) {
-      const addr = rttSymbolAddress(opts.elf);
+      const addr = elfSymbolJs(opts.elf, '_SEGGER_RTT');
       if (addr !== undefined) region = { Exact: addr };
     }
     return this.raw.createRttClient(

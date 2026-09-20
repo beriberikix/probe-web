@@ -8,6 +8,7 @@ probe-web decodes defmt in the browser, from the firmware's ELF.
 ## Monitor a running target
 
 ```ts
+// Also on `@probe-web/client/elf`, which loads no wasm if a symbol lookup is all you need.
 import { elfHasRtt } from '@probe-web/client';
 
 if (elfHasRtt(elf)) {

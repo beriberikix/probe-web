@@ -9,7 +9,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { Client, elfSymbol, ensureWasm, type Debugger, type Variable } from '@probe-web/client';
+import { Client, elfSymbol, type Debugger, type Variable } from '@probe-web/client';
 
 const { values: args } = parseArgs({
   options: {
@@ -38,7 +38,6 @@ const hex = (v: bigint | number) => '0x' + v.toString(16);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const elf = new Uint8Array(await readFile(args.elf));
-await ensureWasm();
 const addr = (name: string) => {
   const a = elfSymbol(elf, name);
   if (a === undefined) throw new Error(`symbol ${name} not in ${args.elf}`);
