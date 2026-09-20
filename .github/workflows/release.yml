@@ -36,6 +36,13 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
 
+      # NPM_TOKEN is the part most likely to be wrong — granular tokens expire after at
+      # most 90 days — so find out in seconds rather than after the wasm build.
+      - name: npm credentials work
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami
+
       # A tag that disagrees with the manifests would publish a version nobody can trace
       # back to it, so fail before anything is built.
       - name: The tag matches the packages' version
