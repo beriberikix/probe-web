@@ -1,29 +1,32 @@
 // A minimal IDE on @probe-web/dap: everything goes through DAP requests and events,
 // as it would from VS Code web or Theia. Monaco shows the stopped frame's source with
 // gutter breakpoints; xterm prints output, the stack and the locals at each stop.
-import * as monaco from 'monaco-editor/editor';
-import 'monaco-editor/languages/definitions/rust/register';
-import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+import type { SourceEditor } from './editor.ts';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { DebugProtocol as DP } from '@vscode/debugprotocol';
 import { ProbeDebugAdapter } from '@probe-web/dap';
-// The look shared with the docs, and light/dark for the editor and terminal.
+// The look shared with the docs, and light/dark for the terminal (the editor themes itself).
 import '@probe-web/ui/theme.css';
-import { currentScheme, onSchemeChange } from '@probe-web/ui/color-scheme';
 import { followScheme } from '@probe-web/ui/terminal-theme';
 
-(self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = { getWorker: () => new EditorWorker() };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const qs = new URLSearchParams(location.search);
 for (const k of ['url', 'token', 'probe', 'chip', 'elf']) if (qs.get(k)) $<HTMLInputElement>(k).value = qs.get(k)!;
 
-const editorTheme = () => (currentScheme() === 'dark' ? 'vs-dark' : 'vs');
-const editor = monaco.editor.create($('editor'), { readOnly: true, glyphMargin: true, automaticLayout: true, minimap: { enabled: false }, model: null, theme: editorTheme() });
-onSchemeChange(() => monaco.editor.setTheme(editorTheme()));
-const bpDecorations = editor.createDecorationsCollection();
-const pcDecoration = editor.createDecorationsCollection();
+// Monaco arrives the first time a stop has source to show; see ./editor.ts.
+let editor: SourceEditor | null = null;
+let loadingEditor: Promise<SourceEditor> | null = null;
+function ensureEditor(): Promise<SourceEditor> {
+  loadingEditor ??= import('./editor.ts').then(({ createEditor }) => {
+    editor = createEditor($('editor'), onGutterClick);
+    renderBreakpoints();
+    return editor;
+  });
+  return loadingEditor;
+}
+
 const term = new Terminal({ convertEol: true, fontSize: 12 });
 followScheme(term);
 const fit = new FitAddon();
@@ -54,20 +57,19 @@ const breakpoints = new Map<string, number[]>();
 const sourceUrl = (path: string) => '/@fs' + path; // dev server; a real IDE reads its workspace
 
 async function open(path: string, line: number | null) {
+  const ed = await ensureEditor();
   if (file !== path) {
     const text = await (await fetch(sourceUrl(path))).text();
-    editor.setModel(monaco.editor.createModel(text, 'rust'));
+    ed.open(text);
     file = path;
   }
   pcLine = line;
-  pcDecoration.set(line ? [{ range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className: 'pc' } }] : []);
-  if (line) editor.revealLineInCenter(line);
+  ed.setPc(line);
   renderBreakpoints();
 }
 
 function renderBreakpoints() {
-  const lines = (file && breakpoints.get(file)) || [];
-  bpDecorations.set(lines.map((l) => ({ range: new monaco.Range(l, 1, l, 1), options: { glyphMarginClassName: 'bp' } })));
+  editor?.setBreakpoints((file && breakpoints.get(file)) || []);
 }
 
 async function setBreakpoints(path: string, lines: number[]) {
@@ -77,12 +79,11 @@ async function setBreakpoints(path: string, lines: number[]) {
   renderBreakpoints();
 }
 
-editor.onMouseDown((e) => {
-  if (!adapter || !file || e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
-  const line = e.target.position!.lineNumber;
+function onGutterClick(line: number) {
+  if (!adapter || !file) return;
   const lines = breakpoints.get(file) ?? [];
   void setBreakpoints(file, lines.includes(line) ? lines.filter((l) => l !== line) : [...lines, line]);
-});
+}
 
 async function onStopped(body: DP.StoppedEvent['body']) {
   const st = await request<DP.StackTraceResponse>('stackTrace', { threadId: 1, levels: 20 });
@@ -114,7 +115,7 @@ async function launch() {
   });
   on<DP.OutputEvent['body']>('output', (b) => print(b.output.trimEnd()));
   on<DP.StoppedEvent['body']>('stopped', (b) => void onStopped(b));
-  on('continued', () => { pcDecoration.clear(); pcLine = null; print('running'); });
+  on('continued', () => { editor?.setPc(null); pcLine = null; print('running'); });
   on('terminated', () => print('terminated'));
   const initialized = new Promise<void>((r) => on('initialized', () => r()));
   await request('initialize', { adapterID: 'probe-rs', linesStartAt1: true, columnsStartAt1: true });

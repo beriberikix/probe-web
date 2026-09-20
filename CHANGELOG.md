@@ -3,6 +3,21 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Performance
+
+Monaco Editor is no longer part of the workbench's or the Monaco IDE example's first load.
+It is fetched the first time there is a source file to show — for the workbench, the first
+stop in code with debug info. Measured with `scripts/first-load.mjs` against a production
+build: the workbench went from **1231 kB to 238 kB** gzipped and the Monaco IDE example from
+**769 kB to 80 kB**. Nothing about either app's behaviour changed; the source panel's element
+still exists from the moment the dock mounts it, and breakpoint marks or a PC line that
+arrive before the editor does are replayed onto it.
+
+`scripts/first-load.mjs` is new: it reports what each app downloads before it is interactive,
+and labels every chunk by what is actually inside it rather than by the name Vite gave it.
+
 ## 0.5.1 - 2026-09-20
 
 No changes to the packages: their source is identical to 0.5.0.
