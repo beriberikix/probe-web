@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/ui",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Web components for flashing and debugging embedded targets from a browser, on @probe-web/client",
   "keywords": [
     "probe-rs",
@@ -50,12 +50,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@probe-web/client": "^0.5.0",
-    "@probe-web/devices": "^0.5.0",
-    "@probe-web/artifacts": "^0.5.0",
+    "@probe-web/client": "^0.5.1",
+    "@probe-web/devices": "^0.5.1",
+    "@probe-web/artifacts": "^0.5.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lit": "^3.2.0",
-    "@probe-web/serial": "^0.5.0"
+    "@probe-web/serial": "^0.5.1"
   }
 }

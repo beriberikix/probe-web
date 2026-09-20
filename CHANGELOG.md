@@ -3,6 +3,17 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.1 - 2026-09-20
+
+No changes to the packages: their source is identical to 0.5.0.
+
+What is different is how they got here. 0.5.0 was published by hand from a laptop, which
+cannot produce an attestation. This version is published by
+[`release.yml`](https://github.com/beriberikix/probe-web/blob/main/.github/workflows/release.yml)
+over [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so each package
+carries provenance linking it to the commit and the workflow run that built it. If you are
+choosing between the two, install this one.
+
 ## 0.5.0 - 2026-09-20
 
 The first released version, and the first on npm.

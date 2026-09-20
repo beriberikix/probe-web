@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/artifacts",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Firmware files in the browser: pick, remember and watch files for re-flash on rebuild",
   "keywords": [
     "probe-rs",

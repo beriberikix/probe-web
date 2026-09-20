@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/client",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "The probe-rs SDK for browsers and Node: flash, RTT, defmt, semihosting and a debugger, over WebUSB or WebSocket",
   "keywords": [
     "probe-rs",
