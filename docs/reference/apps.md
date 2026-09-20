@@ -27,6 +27,25 @@ the sources ship with the site.
 The firmware sources are in `hardware-tests/firmware`, and `scripts/build-firmware.sh`
 builds them.
 
+## Offline, and caching
+
+The hosted site installs a service worker at its root. Every asset it serves is
+content-hashed and therefore immutable, but GitHub Pages caps `Cache-Control` at ten
+minutes and offers no way to configure headers, so past that window each asset costs a
+revalidation round trip before anything can start. The worker answers those from the Cache
+API instead.
+
+The more useful consequence is that the apps keep working with no network once they are
+warm, including the 9.8 MB probe-rs worker — the browser holds it as decompressed bytes, so
+expect the site to occupy on the order of tens of megabytes of origin storage after a
+session that has connected a probe. Clearing site data removes it.
+
+Nothing is precached: the worker fills as pages ask for things, so the first visit is
+exactly as fast as it was before. Documents are fetched network-first, so a new deploy is
+always picked up; only the hashed assets are served cache-first. It is registered by the
+flasher, the inspector and the workbench, and its scope covers the whole site — the
+examples do not register it, but they benefit once one of the apps has.
+
 ## URL parameters
 
 | Parameter | Apps | Meaning |

@@ -18,6 +18,17 @@ It is deliberately not called on import. The flasher, the inspector and the work
 when a probe is likely to be used: when the pointer reaches the connect button, and when
 `grantedDevices()` shows this origin has been granted a probe before.
 
+The hosted site installs a service worker. Every asset is content-hashed and therefore
+immutable, but GitHub Pages caps `Cache-Control` at ten minutes and offers no way to
+configure headers, so past that window each asset costs a revalidation round trip before
+anything can start. Hashed assets are now served cache-first from the Cache API, and
+documents network-first so a deploy is always picked up.
+
+The more useful half is that the apps keep working with no network once warm, including the
+9.8 MB probe-rs worker. Nothing is precached, so a first visit is exactly as fast as before.
+
+No package changed: this is the deployed apps only.
+
 ### Performance
 
 Monaco Editor is no longer part of the workbench's or the Monaco IDE example's first load.
