@@ -107,25 +107,25 @@ Pushing a `v*` tag is the release. `.github/workflows/release.yml` builds the wa
 checks against it, publishes the six packages to npm with provenance, and opens the GitHub
 release from that version's CHANGELOG section.
 
-It authenticates with one repository secret, `NPM_TOKEN`: a **granular** access token with
-read and write on the `@probe-web` scope and **"Bypass 2FA" checked** — without that box a
-publish stops and asks for a one-time password, which a workflow cannot answer. npm caps
-granular tokens at **90 days**, so this secret expires and the release workflow starts
-failing on `EOTP` or `E401` until it is replaced.
+There is **no npm token**. Each package names this repository and this workflow file as its
+[trusted publisher](https://docs.npmjs.com/trusted-publishers), and the job authenticates
+with a short-lived OIDC token it mints per run. That also attests every package to the
+commit and run that built it, which a publish from a laptop cannot do.
 
-The way out of that treadmill is [trusted
-publishing](https://docs.npmjs.com/trusted-publishers): npm trusts this repository and
-workflow file over OIDC, with no token at all. It is configured from a package's settings
-page on npmjs.com, which means the package has to exist already — so it cannot be used for
-a first release, and it is set up once per package afterwards. Switching to it means:
+Three things about that setup are easy to break:
 
-- naming `release.yml` as the trusted publisher's workflow file, for each of the six
-  packages. **Renaming or moving this workflow breaks publishing** until every package's
-  trusted publisher is updated to match;
-- giving the job npm 11.5.1 or newer. `node-version: 22` bundles npm 10, which is not
-  enough, so the workflow needs Node 24 or an explicit `npm install -g npm@latest`;
-- dropping `NPM_TOKEN`, the `registry-url` line in `setup-node`, the `NODE_AUTH_TOKEN`
-  env, and `--provenance` — npm generates provenance by itself on that path.
+- **The trusted publisher names a workflow filename**, not a path or a job. Renaming or
+  moving `.github/workflows/release.yml` breaks publishing for all six packages until each
+  one's configuration on npmjs.com is updated to match.
+- **npm 11.5.1 or newer is required.** `node-version: 22` bundles npm 10, so the workflow
+  installs npm explicitly. Do not drop that step.
+- **"Allowed actions" must permit a direct `npm publish`.** npm always allows `npm stage
+  publish`; publishing straight to the registry is a separate checkbox, and this workflow
+  needs it.
+
+Adding a package to the scope means giving it a trusted publisher too (npmjs.com → the
+package → Settings → Trusted Publisher), and a brand-new package has to be published once
+by hand first, since the setting lives on a package that already exists.
 
 The six `packages/*` share one version. The Rust crates are `publish = false` — they depend
 on git branches of a probe-rs fork, so they cannot go to crates.io.

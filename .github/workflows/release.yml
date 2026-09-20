@@ -1,15 +1,20 @@
 name: Release
 
 # Pushing a v* tag is the whole release: this builds the wasm the packages ship, runs the
-# checks against it, publishes the six packages to npm with provenance, and opens the
-# GitHub release from the tag's CHANGELOG section.
+# checks against it, publishes the six packages to npm, and opens the GitHub release from
+# the tag's CHANGELOG section.
+#
+# There is no npm token. npm is configured to trust this repository and *this file by name*
+# over OIDC (https://docs.npmjs.com/trusted-publishers), which also attests each package to
+# the commit and run that built it. Renaming or moving this file breaks publishing until
+# every package's trusted publisher is updated to match.
 on:
   push:
     tags: ['v*']
 
 permissions:
   contents: write # create the GitHub release
-  id-token: write # npm provenance
+  id-token: write # mint the OIDC token npm authenticates with
 
 jobs:
   release:
@@ -32,16 +37,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          # Writes the .npmrc that makes npm publish read NODE_AUTH_TOKEN.
-          registry-url: https://registry.npmjs.org
+
+      # Node 22 bundles npm 10; trusted publishing needs 11.5.1 or newer.
+      - run: npm install -g npm@^11.5.1
+
       - run: npm ci
 
-      # NPM_TOKEN is the part most likely to be wrong — granular tokens expire after at
-      # most 90 days — so find out in seconds rather than after the wasm build.
-      - name: npm credentials work
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm whoami
+      # Without id-token: write there is no OIDC token to authenticate with, and since
+      # there is no token fallback the publish would fail — after the wasm build and the
+      # whole suite. This costs nothing and fails in seconds.
+      - name: An OIDC token is available
+        run: |
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "::error::No OIDC token: this job needs 'permissions: id-token: write'"
+            exit 1
+          fi
 
       # A tag that disagrees with the manifests would publish a version nobody can trace
       # back to it, so fail before anything is built.
@@ -76,9 +86,13 @@ jobs:
       # Dependencies before their dependents, so nobody can install an @probe-web/ui whose
       # client is not on the registry yet. A version that is already published is skipped,
       # which is what makes re-running this workflow after a partial failure safe.
+      #
+      # Published from inside each package rather than with `npm publish -w` from the root:
+      # npm documents trusted publishing for a plain publish and says nothing about
+      # workspaces, so this keeps to the shape the registry expects. Provenance needs no
+      # flag on this path — npm generates it from the OIDC token.
       - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -e
@@ -86,7 +100,7 @@ jobs:
             if npm view "@probe-web/$pkg@$VERSION" version >/dev/null 2>&1; then
               echo "@probe-web/$pkg@$VERSION is already published, skipping"
             else
-              npm publish -w "@probe-web/$pkg" --provenance
+              (cd "packages/$pkg" && npm publish)
             fi
           done
 
