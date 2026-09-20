@@ -115,10 +115,17 @@ failing on `EOTP` or `E401` until it is replaced.
 
 The way out of that treadmill is [trusted
 publishing](https://docs.npmjs.com/trusted-publishers): npm trusts this repository and
-workflow file over OIDC, with no token at all. It can only be configured for a package that
-already exists, so it is set up per package on npmjs.com after a first release, and then
-`NPM_TOKEN` and the `registry-url`/`NODE_AUTH_TOKEN` lines in the workflow can go (npm 11.5.1
-or newer generates provenance by itself, so `--provenance` goes too).
+workflow file over OIDC, with no token at all. It is configured from a package's settings
+page on npmjs.com, which means the package has to exist already — so it cannot be used for
+a first release, and it is set up once per package afterwards. Switching to it means:
+
+- naming `release.yml` as the trusted publisher's workflow file, for each of the six
+  packages. **Renaming or moving this workflow breaks publishing** until every package's
+  trusted publisher is updated to match;
+- giving the job npm 11.5.1 or newer. `node-version: 22` bundles npm 10, which is not
+  enough, so the workflow needs Node 24 or an explicit `npm install -g npm@latest`;
+- dropping `NPM_TOKEN`, the `registry-url` line in `setup-node`, the `NODE_AUTH_TOKEN`
+  env, and `--provenance` — npm generates provenance by itself on that path.
 
 The six `packages/*` share one version. The Rust crates are `publish = false` — they depend
 on git branches of a probe-rs fork, so they cannot go to crates.io.
