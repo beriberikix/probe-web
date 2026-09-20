@@ -5,30 +5,36 @@ Notable changes to probe-web. The format follows
 
 ## Unreleased
 
-### Performance
+### Added
 
-`@probe-web/ui` no longer loads xterm.js until an element actually shows a terminal.
-`<probe-rtt-terminal>` and `<probe-serial-monitor>` imported it at module scope, and because
-`index.ts` is a barrel that registers every element, a plain `import '@probe-web/ui'` paid
-for xterm on a page with no terminal on it. It is now fetched on first render, together with
-its stylesheet, which is adopted into the element's shadow root rather than baked into
-`static styles`.
+`prefetchWasm()` in `@probe-web/client`. Nothing requests the WebUSB worker's module — about
+2.8 MB over the wire — until `Client.connect` runs, so the whole download used to land inside
+the wait after the user clicked connect. `prefetchWasm()` issues a `rel=prefetch` hint
+instead: the browser fetches at idle priority into its HTTP cache, and nothing is
+instantiated or held in memory. Compiling costs about 30 ms whether the bytes came from the
+network or the cache, so it is the download that is worth moving, not the compile.
 
-Output that arrives while xterm is still downloading is buffered and replayed, so a monitor
-loop or a serial port that starts producing immediately loses nothing.
+It is deliberately not called on import. The flasher, the inspector and the workbench call it
+when a probe is likely to be used: when the pointer reaches the connect button, and when
+`grantedDevices()` shows this origin has been granted a probe before.
 
-Measured against a production build: the flasher's first load went from **136 kB to 65 kB**
-gzipped and the React example's from **176 kB to 106 kB**. In a consumer that installs the
-tarball and imports `@probe-web/ui/serial-monitor`, the entry chunk is 13.7 kB and xterm is a
-separate 71.7 kB chunk that is only fetched when the element renders.
+The hosted site installs a service worker. Every asset is content-hashed and therefore
+immutable, but GitHub Pages caps `Cache-Control` at ten minutes and offers no way to
+configure headers, so past that window each asset costs a revalidation round trip before
+anything can start. Hashed assets are now served cache-first from the Cache API, and
+documents network-first so a deploy is always picked up.
 
-### Fixed
+The more useful half is that the apps keep working with no network once warm, including the
+9.8 MB probe-rs worker. Nothing is precached, so a first visit is exactly as fast as before.
 
-`npm run release:pack` packed every workspace, including the `apps/` and `examples/` ones
-that have no `version`, and failed with "Invalid package, must have name and version". It now
-names the six published packages.
+No package changed: this is the deployed apps only.
 
-## Unreleased
+`scripts/check-consumer.mjs` packs the tarballs, installs them into a throwaway app with the
+minimum configuration a consumer should need, builds it, and loads the result in a browser.
+CI runs it on every pull request against the *latest* Vite — this repository builds on
+Vite 6, so nothing in it would otherwise notice a newer Vite breaking the packages. A build
+that succeeds proves nothing on its own, which is exactly how the Vite 8 failure under
+**Changed** went unnoticed.
 
 ### Changed
 
@@ -59,14 +65,36 @@ affected.
 only Vite understands. The stylesheet is generated into the package by
 `scripts/gen-xterm-css.mjs`, so the package no longer requires a Vite-shaped bundler at all.
 
-### Added
+### Performance
 
-`scripts/check-consumer.mjs` packs the tarballs, installs them into a throwaway app with the
-minimum configuration a consumer should need, builds it, and loads the result in a browser.
-CI runs it on every pull request against the *latest* Vite — this repository builds on
-Vite 6, so nothing in it would otherwise notice a newer Vite breaking the packages. A build
-that succeeds proves nothing on its own, which is exactly how the failure above went
-unnoticed.
+Monaco Editor is no longer part of the workbench's or the Monaco IDE example's first load.
+It is fetched the first time there is a source file to show — for the workbench, the first
+stop in code with debug info. The workbench went from **1231 kB to 238 kB** gzipped and the
+Monaco IDE example from **769 kB to 80 kB**. Nothing about either app's behaviour changed;
+the source panel's element still exists from the moment the dock mounts it, and breakpoint
+marks or a PC line that arrive before the editor does are replayed onto it.
+
+`@probe-web/ui` no longer loads xterm.js until an element actually shows a terminal.
+`<probe-rtt-terminal>` and `<probe-serial-monitor>` imported it at module scope, and because
+`index.ts` is a barrel that registers every element, a plain `import '@probe-web/ui'` paid
+for xterm on a page with no terminal on it. It is now fetched on first render, together with
+its stylesheet, which is adopted into the element's shadow root rather than baked into
+`static styles`. Output that arrives while xterm is still downloading is buffered and
+replayed, so a monitor loop or a serial port that starts producing immediately loses nothing.
+
+The flasher's first load went from **136 kB to 65 kB** gzipped and the React example's from
+**176 kB to 106 kB**. In a consumer that installs the tarball and imports
+`@probe-web/ui/serial-monitor`, the entry chunk is 13.7 kB and xterm is a separate 71.7 kB
+chunk that is only fetched when the element renders.
+
+`scripts/first-load.mjs` is new: it reports what each app downloads before it is interactive,
+and labels every chunk by what is actually inside it rather than by the name Vite gave it.
+
+### Fixed
+
+`npm run release:pack` packed every workspace, including the `apps/` and `examples/` ones
+that have no `version`, and failed with "Invalid package, must have name and version". It now
+names the six published packages.
 
 ## 0.5.1 - 2026-09-20
 
