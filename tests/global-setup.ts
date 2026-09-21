@@ -23,9 +23,15 @@ export default async function globalSetup(config: FullConfig) {
       { timeout: 180_000 },
     );
 
-    // Each other app has dependencies of its own — dockview and Monaco in the workbench and the
-    // IDE example. Vite optimises those on first request and reloads the page when it does,
-    // which looks like a test flake if it happens mid-spec.
+    // Each other app has dependencies of its own — dockview in the workbench, React in the
+    // example. Vite optimises those on first request and reloads the page when it does, which
+    // looks like a test flake if it happens mid-spec.
+    //
+    // Monaco is no longer among them: it is behind a dynamic import, so idle network here
+    // proves only that Vite served what the page *asked* for, and the first spec to open a
+    // source file still pays its transform. Driving the workbench to a stop from here would
+    // close that gap, but every version of it was more fragile than the rare flake it fixes,
+    // and CI retries once. Left as a known gap rather than a brittle warmup.
     for (const path of ['/workbench/?fake=1', '/inspect/', '/monaco-ide/']) {
       await page.goto(`${baseURL}${path}`, { timeout: 180_000 });
       // Idle network means Vite has served every module this page asks for, which is the

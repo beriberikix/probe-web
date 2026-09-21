@@ -3,7 +3,22 @@
 Notable changes to probe-web. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.6.0 - 2026-09-20
+
+Smaller, and no longer particular about your bundler.
+
+`@probe-web/ui` ships compiled JavaScript now, so the decorator configuration consumers used
+to need is gone — along with a silent failure on Vite 8, where the build succeeded and the
+page then died with `SyntaxError: Invalid or unexpected token`. The elements also no longer
+drag the SDK's wasm into a build: importing one used to put 10.9 MB of wasm in the output and
+now puts none there.
+
+If you install anything from this scope, take this version: everything a consumer needs is
+now one line of Vite configuration, and only because of the client's worker URL.
+
+```ts
+optimizeDeps: { exclude: ['@probe-web/client'] }
+```
 
 ### Added
 

@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/serial",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "WebSerial console for boards whose output is on a UART bridge (not probe-rs)",
   "keywords": [
     "embedded",

@@ -1,6 +1,6 @@
 {
   "name": "@probe-web/devices",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "WebUSB debug-probe lifecycle: request, list, hotplug and per-tab locking",
   "keywords": [
     "probe-rs",
